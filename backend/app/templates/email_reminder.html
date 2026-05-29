@@ -1,0 +1,19 @@
+Subject: {% if reminder_type == 'milestone_alert' %}Milestone Alert — {{ invoice_number }}{% elif reminder_type == 'overdue' %}Overdue Invoice — {{ invoice_number }}{% else %}Payment Reminder — {{ invoice_number }}{% endif %}
+
+<html>
+<body style="font-family: Arial, sans-serif; color: #111827;">
+  <p>Hello,</p>
+  {% if reminder_type == 'milestone_alert' %}
+  <p>This is a milestone alert for invoice <strong>{{ invoice_number }}</strong> (Customer: {{ customer_name }}).</p>
+  <p>Project milestone date: {{ milestone_date }}</p>
+  {% elif reminder_type == 'overdue' %}
+  <p>Invoice <strong>{{ invoice_number }}</strong> for {{ customer_name }} is overdue.</p>
+  <p>Amount due: {{ currency }} {{ total }}</p>
+  {% else %}
+  <p>This is a payment reminder for invoice <strong>{{ invoice_number }}</strong>.</p>
+  <p>Customer: {{ customer_name }} | Amount: {{ currency }} {{ total }}</p>
+  {% endif %}
+  <p>Please review and take appropriate action.</p>
+  <p>— Qrestik Invoice Management</p>
+</body>
+</html>

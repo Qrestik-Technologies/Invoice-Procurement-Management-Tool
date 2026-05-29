@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <style>
+    body { font-family: Arial, sans-serif; color: #111827; margin: 40px; }
+    .header { border-bottom: 3px solid #0C447C; padding-bottom: 16px; margin-bottom: 24px; }
+    .company { font-size: 22px; font-weight: bold; color: #0C447C; }
+    h1 { font-size: 18px; margin: 0 0 8px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 24px; }
+    th { background: #0F6E56; color: white; text-align: left; padding: 8px; font-size: 12px; }
+    td { border-bottom: 1px solid #E5E7EB; padding: 8px; font-size: 12px; }
+    .totals { margin-top: 24px; float: right; width: 260px; }
+    .totals div { display: flex; justify-content: space-between; padding: 4px 0; }
+    .total-row { font-weight: bold; font-size: 14px; border-top: 2px solid #0F6E56; padding-top: 8px; }
+    .footer { clear: both; margin-top: 48px; font-size: 11px; color: #6B7280; }
+    .address-grid { display: flex; gap: 40px; margin-top: 16px; }
+    .address-block { flex: 1; }
+    .label { font-size: 11px; color: #6B7280; text-transform: uppercase; }
+    .ship-to { border: 2px solid #0F6E56; padding: 12px; border-radius: 4px; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="company">{{ company_name }}</div>
+    <div>{{ company_email }}</div>
+  </div>
+  <h1>INVOICE {{ invoice.invoice_number }}</h1>
+  <p>Date: {{ invoice.invoice_date }} | PO: {{ invoice.po_number or 'N/A' }} | Terms: {{ invoice.payment_terms or 'Net 30' }}</p>
+
+  <div class="address-grid">
+    <div class="address-block">
+      <div class="label">Bill To</div>
+      <strong>{{ customer.name if customer else '' }}</strong><br/>
+      {{ invoice.bill_to_address or customer.address or '' }}
+    </div>
+    <div class="address-block ship-to">
+      <div class="label">Ship To (Required)</div>
+      <strong>{{ customer.name if customer else '' }}</strong><br/>
+      {{ invoice.ship_to_address or customer.ship_to_address or '' }}
+    </div>
+  </div>
+
+  <table>
+    <thead>
+      <tr><th>Description</th><th>Qty</th><th>Rate</th><th>Amount</th></tr>
+    </thead>
+    <tbody>
+      {% for item in line_items %}
+      <tr>
+        <td>{{ item.description }}</td>
+        <td>{{ item.qty }}</td>
+        <td>{{ item.rate }}</td>
+        <td>{{ item.amount }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <div class="totals">
+    <div><span>Subtotal</span><span>{{ invoice.currency }} {{ invoice.subtotal }}</span></div>
+    <div><span>Tax</span><span>{{ invoice.currency }} {{ invoice.tax }}</span></div>
+    <div class="total-row"><span>Total</span><span>{{ invoice.currency }} {{ invoice.total }}</span></div>
+  </div>
+
+  <div class="footer">
+    <p><strong>PO Number:</strong> {{ invoice.po_number or 'See contract' }}</p>
+    <p><strong>Payment Terms:</strong> {{ invoice.payment_terms or 'Net 30' }}</p>
+    <p><strong>Bank Details:</strong> Qrestik Services LLC — Account placeholder — Wire/ACH instructions on request</p>
+  </div>
+</body>
+</html>
