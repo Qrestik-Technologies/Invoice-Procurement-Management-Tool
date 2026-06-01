@@ -1,6 +1,6 @@
-import { createContext, useContext, useEffect, useMemo, useState } from 'react';
-import { fetchMe, logout as apiLogout } from '../api/auth';
-import { getToken } from '../api/client';
+import { createContext, useContext, useEffect, useState } from 'react';
+import { fetchMe } from '../api/auth';
+import { getToken, clearToken } from '../api/client';
 
 const AuthContext = createContext(null);
 
@@ -16,29 +16,24 @@ export function AuthProvider({ children }) {
     }
     fetchMe()
       .then(setUser)
-      .catch(() => setUser(null))
+      .catch(() => clearToken())
       .finally(() => setLoading(false));
   }, []);
 
-  const value = useMemo(
-    () => ({
-      user,
-      loading,
-      isAuthenticated: !!user,
-      setUser,
-      logout: () => {
-        apiLogout();
-        setUser(null);
-      },
-    }),
-    [user, loading],
-  );
+  function logout() {
+    clearToken();
+    setUser(null);
+  }
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider value={{ user, setUser, logout, loading }}>
+      {children}
+    </AuthContext.Provider>
+  );
 }
 
 export function useAuth() {
   const ctx = useContext(AuthContext);
-  if (!ctx) throw new Error('useAuth must be used within AuthProvider');
+  if (!ctx) throw new Error('useAuth must be used inside AuthProvider');
   return ctx;
 }
