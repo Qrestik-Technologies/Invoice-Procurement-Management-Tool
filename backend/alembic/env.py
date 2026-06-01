@@ -1,53 +1,38 @@
-"""Alembic migration environment."""
-
+import asyncio
 from logging.config import fileConfig
 
-from alembic import context
 from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
+from alembic import context
 
 from app.core.config import settings
 from app.core.database import Base
 
+# Register all models so Alembic sees every table in metadata.
+from app.models import (  # noqa: F401
+    User, Customer, Invoice, Milestone, Payment, Reminder, Document, AuditLog,
+)
+
 config = context.config
+config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 target_metadata = Base.metadata
 
-# Import all models so Alembic detects them
-from app.models import (  # noqa: E402, F401
-    AuditLog,
-    Customer,
-    Document,
-    Invoice,
-    Milestone,
-    Payment,
-    ReminderLog,
-    User,
-)
-
-config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
-
 
 def run_migrations_offline() -> None:
     url = config.get_main_option("sqlalchemy.url")
-    context.configure(
-        url=url,
-        target_metadata=target_metadata,
-        literal_binds=True,
-        dialect_opts={"paramstyle": "named"},
-    )
-
+    context.configure(url=url, target_metadata=target_metadata, literal_binds=True,
+                      dialect_opts={"paramstyle": "named"})
     with context.begin_transaction():
         context.run_migrations()
 
 
 def do_run_migrations(connection: Connection) -> None:
     context.configure(connection=connection, target_metadata=target_metadata)
-
     with context.begin_transaction():
         context.run_migrations()
 
@@ -58,16 +43,12 @@ async def run_async_migrations() -> None:
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
     )
-
     async with connectable.connect() as connection:
         await connection.run_sync(do_run_migrations)
-
     await connectable.dispose()
 
 
 def run_migrations_online() -> None:
-    import asyncio
-
     asyncio.run(run_async_migrations())
 
 
