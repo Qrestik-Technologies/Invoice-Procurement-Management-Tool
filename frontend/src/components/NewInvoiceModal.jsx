@@ -1,24 +1,3 @@
-/**
- * NewInvoiceModal.jsx
- * Drop-in replacement / enhancement for the New Invoice modal.
- *
- * Changes vs original:
- *  - Adds an "Attachments" section with drag-and-drop + click-to-browse file upload
- *  - Displays selected file chips with remove button
- *  - Passes `attachments` (File[]) back via onSubmit alongside the rest of the form data
- *
- * Usage:
- *   <NewInvoiceModal
- *     isOpen={showModal}
- *     onClose={() => setShowModal(false)}
- *     onSubmit={handleCreateInvoice}   // receives { invoiceNumber, customer, amount, currency, issueDate, dueDate, description, attachments }
- *     customers={customers}            // [{ id, name }]
- *     nextInvoiceNumber="INV-001"      // optional default
- *   />
- *
- * Dependencies (already in your package.json): React, Tailwind CSS, lucide-react
- */
-
 import { useState, useRef, useCallback } from "react";
 import { X, Upload, FileText, Paperclip, AlertCircle } from "lucide-react";
 
