@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -12,6 +12,7 @@ from app.models.invoices import Invoice
 from app.models.reminder_logs import ReminderLog
 from app.models.users import User
 from app.schemas import APIResponse, ReminderRead
+from app.services.pagination import paginate
 from app.tasks.reminder_tasks import send_reminder
 
 router = APIRouter(prefix="/reminders", tags=["reminders"])
@@ -27,20 +28,23 @@ REMINDER_TYPE_MAP = {
 async def list_reminders(
     db: Annotated[AsyncSession, Depends(get_db)],
     _: Annotated[User, Depends(get_current_user)],
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),
 ):
-    result = await db.execute(
+    stmt = (
         select(ReminderLog)
         .options(selectinload(ReminderLog.invoice).selectinload(Invoice.customer))
         .order_by(ReminderLog.sent_at.desc())
     )
+    rows, meta = await paginate(db, stmt, page=page, page_size=page_size)
     items = []
-    for r in result.scalars().all():
+    for r in rows:
         item = ReminderRead.model_validate(r)
         if r.invoice:
             item.invoice_number = r.invoice.invoice_number
             item.customer_name = r.invoice.customer.name if r.invoice.customer else None
         items.append(item)
-    return APIResponse(data=items)
+    return APIResponse(data=items, pagination=meta)
 
 
 @router.post("/{invoice_id}/send", response_model=APIResponse[dict])

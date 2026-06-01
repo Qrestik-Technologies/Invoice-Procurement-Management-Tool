@@ -14,3 +14,13 @@ export async function uploadDocument(file, linkedInvoiceId = null) {
   });
   return data.data;
 }
+
+export async function downloadDocument(id, filename) {
+  const response = await apiClient.get(`/documents/${id}/download`, { responseType: 'blob' });
+  const url = window.URL.createObjectURL(new Blob([response.data]));
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  link.click();
+  window.URL.revokeObjectURL(url);
+}

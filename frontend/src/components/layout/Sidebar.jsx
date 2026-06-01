@@ -1,4 +1,4 @@
-import { NavLink } from 'react-router-dom';
+import { NavLink, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard,
   FileText,
@@ -10,6 +10,7 @@ import {
   Settings,
   X,
   ChevronLeft,
+  LogOut,
 } from 'lucide-react';
 import { cn } from '../../utils/cn';
 import { RoleBadge } from '../ui/Badge';
@@ -28,10 +29,17 @@ const navItems = [
 ];
 
 export default function Sidebar({ open, onClose, collapsed, onToggleCollapse }) {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
   const visibleNav = navItems.filter(
     (item) => !item.adminOnly || canAccessSettings(user?.role),
   );
+
+  const handleLogout = () => {
+    logout();
+    navigate('/login');
+  };
+
   return (
     <>
       {open && (
@@ -114,6 +122,17 @@ export default function Sidebar({ open, onClose, collapsed, onToggleCollapse }) 
               </div>
             )}
           </div>
+          <button
+            type="button"
+            onClick={handleLogout}
+            className={cn(
+              'mt-3 flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-[#6B7280] hover:bg-gray-50 hover:text-[#111827]',
+              collapsed && 'lg:justify-center lg:px-2',
+            )}
+          >
+            <LogOut className="h-4 w-4 shrink-0" />
+            {!collapsed && <span>Sign out</span>}
+          </button>
         </div>
       </aside>
     </>

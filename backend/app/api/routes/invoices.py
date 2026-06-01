@@ -1,25 +1,28 @@
+import logging
 from datetime import date
-from decimal import Decimal
+from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import FileResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.database import get_db
 from app.core.security import get_current_user, require_roles
-from app.models.customers import Customer
 from app.models.enums import InvoiceStatus, UserRole
 from app.models.invoices import Invoice
-from app.models.milestones import Milestone
 from app.models.payments import Payment
 from app.models.users import User
 from app.schemas import APIResponse, InvoiceCreate, InvoiceRead, InvoiceUpdate, MarkReceivedRequest
 from app.services.audit_service import write_audit_log
 from app.services.invoice_helpers import model_to_dict, next_invoice_number, serialize_invoice
+from app.services.pagination import paginate
 from app.services.template_service import generate_invoice_pdf
+from app.services.validators import require_customer, require_invoice, require_milestone
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/invoices", tags=["invoices"])
 
 
@@ -40,6 +43,8 @@ async def list_invoices(
     customer_id: int | None = None,
     date_from: date | None = None,
     date_to: date | None = None,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),
 ):
     q = select(Invoice).options(selectinload(Invoice.customer), selectinload(Invoice.milestone))
     if status_filter:
@@ -51,7 +56,7 @@ async def list_invoices(
     if date_to:
         q = q.where(Invoice.invoice_date <= date_to)
     q = q.order_by(Invoice.invoice_date.desc())
-    result = await db.execute(q)
+    invoices, meta = await paginate(db, q, page=page, page_size=page_size)
     return APIResponse(
         data=[
             serialize_invoice(
@@ -59,8 +64,9 @@ async def list_invoices(
                 inv.customer.name if inv.customer else None,
                 inv.milestone.project_name if inv.milestone else None,
             )
-            for inv in result.scalars().all()
-        ]
+            for inv in invoices
+        ],
+        pagination=meta,
     )
 
 
@@ -82,12 +88,34 @@ async def get_invoice(
     )
 
 
+@router.get("/{invoice_id}/pdf")
+async def download_invoice_pdf(
+    invoice_id: int,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _: Annotated[User, Depends(get_current_user)],
+):
+    inv = await _load_invoice(db, invoice_id)
+    if inv is None:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    if not inv.file_path or not Path(inv.file_path).exists():
+        raise HTTPException(status_code=404, detail="PDF not available for this invoice")
+    return FileResponse(
+        inv.file_path,
+        media_type="application/pdf",
+        filename=f"{inv.invoice_number}.pdf",
+    )
+
+
 @router.post("", response_model=APIResponse[InvoiceRead], status_code=status.HTTP_201_CREATED)
 async def create_invoice(
     body: InvoiceCreate,
     db: Annotated[AsyncSession, Depends(get_db)],
     current: Annotated[User, Depends(require_roles(UserRole.admin, UserRole.entry))],
 ):
+    await require_customer(db, body.customer_id)
+    if body.milestone_id is not None:
+        await require_milestone(db, body.milestone_id)
+
     inv_number = body.invoice_number or await next_invoice_number(db)
     line_items = [
         li.model_dump() if hasattr(li, "model_dump") else li for li in body.line_items
@@ -141,8 +169,13 @@ async def update_invoice(
     inv = await _load_invoice(db, invoice_id)
     if inv is None:
         raise HTTPException(status_code=404, detail="Invoice not found")
-    old = model_to_dict(inv, ["status", "total", "customer_id"])
     data = body.model_dump(exclude_unset=True)
+    if "customer_id" in data and data["customer_id"] is not None:
+        await require_customer(db, data["customer_id"])
+    if "milestone_id" in data and data["milestone_id"] is not None:
+        await require_milestone(db, data["milestone_id"])
+
+    old = model_to_dict(inv, ["status", "total", "customer_id"])
     if "line_items" in data and data["line_items"] is not None:
         data["line_items"] = [li if isinstance(li, dict) else li for li in data["line_items"]]
     for k, v in data.items():
@@ -179,12 +212,13 @@ async def dispatch_invoice(
     if inv.status not in (InvoiceStatus.draft, InvoiceStatus.reviewed, InvoiceStatus.pending):
         raise HTTPException(status_code=400, detail="Invoice cannot be dispatched in current status")
     old_status = inv.status.value
-    inv.status = InvoiceStatus.dispatched
     try:
         pdf_path = await generate_invoice_pdf(db, inv)
-        inv.file_path = pdf_path
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.exception("PDF generation failed for invoice %s: %s", invoice_id, exc)
+        raise HTTPException(status_code=500, detail="Failed to generate invoice PDF") from exc
+    inv.status = InvoiceStatus.dispatched
+    inv.file_path = pdf_path
     await write_audit_log(
         db,
         table_name="invoices",

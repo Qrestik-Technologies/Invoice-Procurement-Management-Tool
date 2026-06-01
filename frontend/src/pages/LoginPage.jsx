@@ -10,8 +10,8 @@ import { useAuth } from '../context/AuthContext';
 export default function LoginPage() {
   const navigate = useNavigate();
   const { setUser } = useAuth();
-  const [email, setEmail] = useState('admin@qrestik.com');
-  const [password, setPassword] = useState('admin123');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
 
@@ -26,7 +26,11 @@ export default function LoginPage() {
       toast.success('Signed in successfully');
       navigate('/');
     } catch (err) {
-      toast.error(err.response?.data?.detail || 'Invalid email or password');
+      if (!err.response) {
+        toast.error('Cannot reach the API. Start the backend with: docker compose up -d');
+      } else {
+        toast.error(err.response?.data?.message || err.response?.data?.detail || 'Invalid email or password');
+      }
     } finally {
       setLoading(false);
     }
@@ -78,9 +82,6 @@ export default function LoginPage() {
               {loading ? 'Signing in…' : 'Sign In'}
             </Button>
           </form>
-          <p className="mt-4 text-center text-xs text-[#9CA3AF]">
-            Demo: admin@qrestik.com / admin123
-          </p>
         </div>
       </div>
     </div>

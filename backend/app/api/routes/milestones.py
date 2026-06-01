@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -14,6 +14,8 @@ from app.models.users import User
 from app.schemas import APIResponse, MilestoneCreate, MilestoneRead, MilestoneUpdate
 from app.services.audit_service import write_audit_log
 from app.services.invoice_helpers import model_to_dict
+from app.services.pagination import paginate
+from app.services.validators import require_customer
 
 router = APIRouter(prefix="/milestones", tags=["milestones"])
 
@@ -28,15 +30,16 @@ def _serialize(m: Milestone, linked_number: str | None = None) -> MilestoneRead:
 async def list_milestones(
     db: Annotated[AsyncSession, Depends(get_db)],
     _: Annotated[User, Depends(get_current_user)],
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),
 ):
-    result = await db.execute(
-        select(Milestone).options(selectinload(Milestone.invoices)).order_by(Milestone.end_date)
-    )
+    stmt = select(Milestone).options(selectinload(Milestone.invoices)).order_by(Milestone.end_date)
+    milestones, meta = await paginate(db, stmt, page=page, page_size=page_size)
     items = []
-    for m in result.scalars().all():
+    for m in milestones:
         linked = m.invoices[0].invoice_number if m.invoices else None
         items.append(_serialize(m, linked))
-    return APIResponse(data=items)
+    return APIResponse(data=items, pagination=meta)
 
 
 @router.post("", response_model=APIResponse[MilestoneRead], status_code=status.HTTP_201_CREATED)
@@ -45,6 +48,7 @@ async def create_milestone(
     db: Annotated[AsyncSession, Depends(get_db)],
     current: Annotated[User, Depends(require_roles(UserRole.admin, UserRole.entry))],
 ):
+    await require_customer(db, body.customer_id)
     milestone = Milestone(**body.model_dump())
     db.add(milestone)
     await db.flush()

@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -11,6 +11,7 @@ from app.models.users import User
 from app.schemas import APIResponse, UserCreate, UserRead, UserUpdate
 from app.services.audit_service import write_audit_log
 from app.services.invoice_helpers import model_to_dict
+from app.services.pagination import paginate
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -19,10 +20,15 @@ router = APIRouter(prefix="/users", tags=["users"])
 async def list_users(
     db: Annotated[AsyncSession, Depends(get_db)],
     _: Annotated[User, Depends(require_roles(UserRole.admin))],
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),
 ):
-    result = await db.execute(select(User).order_by(User.name))
-    users = result.scalars().all()
-    return APIResponse(data=[UserRead.model_validate(u) for u in users])
+    stmt = select(User).order_by(User.name)
+    users, meta = await paginate(db, stmt, page=page, page_size=page_size)
+    return APIResponse(
+        data=[UserRead.model_validate(u) for u in users],
+        pagination=meta,
+    )
 
 
 @router.post("", response_model=APIResponse[UserRead], status_code=status.HTTP_201_CREATED)

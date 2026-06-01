@@ -37,16 +37,25 @@ class OneDriveService:
         logger.warning("OneDrive token acquisition failed: %s", result.get("error_description"))
         return None
 
+    def _upload_path(self, destination_filename: str) -> str:
+        if settings.ONEDRIVE_DRIVE_ID:
+            return f"/drives/{settings.ONEDRIVE_DRIVE_ID}/root:/Invoices/{destination_filename}:/content"
+        logger.warning("ONEDRIVE_DRIVE_ID not set — upload will fail with client-credentials flow")
+        return f"/drives/unknown/root:/Invoices/{destination_filename}:/content"
+
     def upload_to_onedrive(self, local_file_path: str, destination_filename: str) -> str | None:
         token = self._get_token()
         if not token:
+            return None
+        if not settings.ONEDRIVE_DRIVE_ID:
+            logger.error("ONEDRIVE_DRIVE_ID is required for app-only Graph uploads")
             return None
 
         path = Path(local_file_path)
         if not path.exists():
             return None
 
-        upload_path = f"/me/drive/root:/Invoices/{destination_filename}:/content"
+        upload_path = self._upload_path(destination_filename)
         headers = {"Authorization": f"Bearer {token}"}
         try:
             resp = requests.put(

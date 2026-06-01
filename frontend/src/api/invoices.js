@@ -29,3 +29,13 @@ export async function markInvoiceReceived(id, payload) {
   const { data } = await apiClient.put(`/invoices/${id}/mark-received`, payload);
   return data.data;
 }
+
+export async function downloadInvoicePdf(id, filename) {
+  const response = await apiClient.get(`/invoices/${id}/pdf`, { responseType: 'blob' });
+  const url = window.URL.createObjectURL(new Blob([response.data]));
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  link.click();
+  window.URL.revokeObjectURL(url);
+}

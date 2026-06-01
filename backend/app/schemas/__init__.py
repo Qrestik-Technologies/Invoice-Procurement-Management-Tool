@@ -21,6 +21,14 @@ class APIResponse(BaseModel, Generic[T]):
     success: bool = True
     data: T | None = None
     message: str | None = None
+    pagination: "PaginationMeta | None" = None
+
+
+class PaginationMeta(BaseModel):
+    total: int
+    page: int
+    page_size: int
+    pages: int
 
 
 class TokenResponse(BaseModel):
@@ -166,7 +174,7 @@ class InvoiceRead(InvoiceBase):
     id: int
     invoice_number: str
     status: InvoiceStatus
-    file_path: str | None = None
+    has_pdf: bool = False
     onedrive_url: str | None = None
     uploaded_by: int | None = None
     created_at: datetime
@@ -186,7 +194,6 @@ class DocumentRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: int
     filename: str
-    file_path: str
     onedrive_url: str | None = None
     linked_invoice_id: int | None = None
     uploaded_by: int

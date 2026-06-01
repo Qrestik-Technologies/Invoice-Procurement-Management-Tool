@@ -1,0 +1,6 @@
+# Replace invoices.yourdomain.com with your production domain.
+# Caddy obtains TLS certificates automatically via Let's Encrypt.
+
+{$DOMAIN:invoices.yourdomain.com} {
+    reverse_proxy nginx:80
+}

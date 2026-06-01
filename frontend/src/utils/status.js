@@ -50,6 +50,14 @@ export function toApiTemplate(t) {
   return t === 'EMCOR' ? 'emcor' : 'standard';
 }
 
+export const STATUS_COLORS = {
+  Draft: { bg: 'bg-gray-100', text: 'text-status-draft', dot: 'bg-status-draft' },
+  Pending: { bg: 'bg-amber-50', text: 'text-status-pending', dot: 'bg-status-pending' },
+  Dispatched: { bg: 'bg-blue-50', text: 'text-status-dispatched', dot: 'bg-status-dispatched' },
+  Received: { bg: 'bg-green-50', text: 'text-status-received', dot: 'bg-status-received' },
+  Overdue: { bg: 'bg-red-50', text: 'text-status-overdue', dot: 'bg-status-overdue' },
+};
+
 export function toDisplayRole(role) {
   const map = { admin: 'Admin', entry: 'Entry', readonly: 'Readonly' };
   return map[role] || role;

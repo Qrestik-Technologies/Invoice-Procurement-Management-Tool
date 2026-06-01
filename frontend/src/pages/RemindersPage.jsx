@@ -1,8 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
-import { CheckCircle2, XCircle, Send } from 'lucide-react';
+import { CheckCircle2, XCircle } from 'lucide-react';
 import PageHeader from '../components/ui/PageHeader';
 import Card, { CardHeader } from '../components/ui/Card';
-import Button from '../components/ui/Button';
 import { fetchReminders } from '../api/reminders';
 import { formatDateTime } from '../utils/format';
 import { toDisplayReminderType } from '../utils/status';

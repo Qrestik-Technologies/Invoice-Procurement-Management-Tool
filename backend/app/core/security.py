@@ -4,25 +4,25 @@ from typing import Annotated, Any
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
-from passlib.context import CryptContext
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.database import get_db
+from app.core.passwords import hash_password, verify_password
 from app.models.enums import UserRole
 from app.models.users import User
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 security = HTTPBearer(auto_error=False)
 
-
-def verify_password(plain: str, hashed: str) -> bool:
-    return pwd_context.verify(plain, hashed)
-
-
-def hash_password(password: str) -> str:
-    return pwd_context.hash(password)
+__all__ = [
+    "security",
+    "hash_password",
+    "verify_password",
+    "create_access_token",
+    "get_current_user",
+    "require_roles",
+]
 
 
 def create_access_token(subject: str, extra: dict[str, Any] | None = None) -> str:

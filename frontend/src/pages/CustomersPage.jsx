@@ -3,7 +3,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Mail, Phone, Building2, Pencil } from 'lucide-react';
+import { Plus, Mail, Phone, Building2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import PageHeader from '../components/ui/PageHeader';
 import Button from '../components/ui/Button';
@@ -13,7 +13,7 @@ import EmptyState from '../components/ui/EmptyState';
 import { Input, Select, Textarea } from '../components/ui/FormFields';
 import { fetchCustomers, createCustomer } from '../api/customers';
 import { formatCurrency } from '../utils/format';
-import { toApiTemplate, toDisplayTemplate } from '../utils/status';
+import { toDisplayTemplate } from '../utils/status';
 import { useAuth } from '../context/AuthContext';
 import { canEdit } from '../utils/status';
 
@@ -30,7 +30,7 @@ export default function CustomersPage() {
   const queryClient = useQueryClient();
   const [modalOpen, setModalOpen] = useState(false);
   const { data: customers = [], isLoading } = useQuery({ queryKey: ['customers'], queryFn: fetchCustomers });
-  const { register, handleSubmit, reset, watch, formState: { errors } } = useForm({
+  const { register, handleSubmit, reset, watch } = useForm({
     resolver: zodResolver(schema),
     defaultValues: { template_type: 'standard' },
   });

@@ -1,5 +1,5 @@
 import { cn } from '../../utils/cn';
-import { STATUS_COLORS } from '../../data/mockData';
+import { STATUS_COLORS } from '../../utils/status';
 
 export default function StatusBadge({ status, className }) {
   const colors = STATUS_COLORS[status] || STATUS_COLORS.Draft;

@@ -9,8 +9,7 @@ from sqlalchemy.orm import sessionmaker
 from app.core.celery_app import celery_app
 from app.core.config import settings
 from app.models.customers import Customer
-from app.models.documents import Document
-from app.models.enums import InvoiceStatus, ReminderStatus, ReminderType, SyncStatus
+from app.models.enums import InvoiceStatus, ReminderStatus, ReminderType
 from app.models.invoices import Invoice
 from app.models.milestones import Milestone
 from app.models.reminder_logs import ReminderLog
@@ -24,11 +23,16 @@ SessionLocal = sessionmaker(bind=engine)
 TEMPLATE_DIR = Path(__file__).resolve().parent.parent / "templates"
 email_env = Environment(loader=FileSystemLoader(str(TEMPLATE_DIR)), autoescape=select_autoescape(["html"]))
 
+_SWEEP_LOCK_KEY = "reminder_sweep_running"
+
 
 def _send_email(to_email: str, subject: str, html_content: str) -> bool:
     if not settings.SENDGRID_API_KEY:
+        if settings.is_production:
+            logger.error("SendGrid not configured — refusing to send in production")
+            return False
         logger.info("SendGrid not configured — would send to %s: %s", to_email, subject)
-        return True
+        return False
     try:
         from sendgrid import SendGridAPIClient
         from sendgrid.helpers.mail import Mail
@@ -84,6 +88,13 @@ def send_reminder(self, invoice_id: int, reminder_type: str, recipient_emails: l
 
 @celery_app.task(name="app.tasks.reminder_tasks.sweep_payment_reminders")
 def sweep_payment_reminders():
+    import redis
+
+    r = redis.from_url(settings.REDIS_URL)
+    if not r.set(_SWEEP_LOCK_KEY, "1", nx=True, ex=3600):
+        logger.info("Payment reminder sweep already running — skipping")
+        return {"skipped": True}
+
     session = SessionLocal()
     try:
         dispatched = session.execute(
@@ -95,6 +106,7 @@ def sweep_payment_reminders():
                 send_reminder.delay(inv.id, ReminderType.payment_reminder.value, [customer.email])
     finally:
         session.close()
+        r.delete(_SWEEP_LOCK_KEY)
 
 
 @celery_app.task(name="app.tasks.reminder_tasks.check_milestone_alerts")
@@ -124,7 +136,6 @@ def check_emcor_monthly_alert():
         today = date.today()
         if today.day != 25:
             return
-        next_month = (today.replace(day=28) + timedelta(days=4)).replace(day=1)
         from app.models.enums import TemplateType
 
         emcor_invoices = session.execute(

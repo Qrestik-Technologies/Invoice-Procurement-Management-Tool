@@ -1,6 +1,5 @@
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Eye } from 'lucide-react';
 import {
   PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip,
 } from 'recharts';

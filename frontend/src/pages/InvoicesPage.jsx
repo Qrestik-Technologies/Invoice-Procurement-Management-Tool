@@ -10,8 +10,10 @@ import Button from '../components/ui/Button';
 import StatusBadge from '../components/ui/Badge';
 import Card from '../components/ui/Card';
 import EmptyState from '../components/ui/EmptyState';
+import QueryError from '../components/ui/QueryError';
 import { Input, Select } from '../components/ui/FormFields';
 import NewInvoiceDrawer from '../components/invoices/NewInvoiceDrawer';
+import InvoiceDetailDrawer from '../components/invoices/InvoiceDetailDrawer';
 import { fetchInvoices, dispatchInvoice } from '../api/invoices';
 import { useAuth } from '../context/AuthContext';
 import { formatCurrency, formatDate } from '../utils/format';
@@ -23,6 +25,8 @@ export default function InvoicesPage() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [detailId, setDetailId] = useState(null);
+  const [detailMode, setDetailMode] = useState('view');
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [dateFrom, setDateFrom] = useState('');
@@ -34,7 +38,7 @@ export default function InvoicesPage() {
     date_to: dateTo || undefined,
   }), [statusFilter, dateFrom, dateTo]);
 
-  const { data: invoices = [], isLoading } = useQuery({
+  const { data: invoices = [], isLoading, isError, refetch } = useQuery({
     queryKey: ['invoices', params],
     queryFn: () => fetchInvoices(params),
   });
@@ -45,8 +49,13 @@ export default function InvoicesPage() {
       toast.success('Invoice dispatched');
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
     },
-    onError: (e) => toast.error(e.response?.data?.detail || 'Dispatch failed'),
+    onError: (e) => toast.error(e.response?.data?.message || e.response?.data?.detail || 'Dispatch failed'),
   });
+
+  const openDetail = (id, mode) => {
+    setDetailId(id);
+    setDetailMode(mode);
+  };
 
   const filtered = useMemo(() => {
     if (!search) return invoices;
@@ -69,10 +78,10 @@ export default function InvoicesPage() {
       enableSorting: false,
       cell: ({ row }) => (
         <div className="flex gap-1">
-          <button type="button" className="rounded p-1.5 text-[#6B7280] hover:bg-gray-100 hover:text-primary"><Eye className="h-4 w-4" /></button>
+          <button type="button" title="View" onClick={() => openDetail(row.original.id, 'view')} className="rounded p-1.5 text-[#6B7280] hover:bg-gray-100 hover:text-primary"><Eye className="h-4 w-4" /></button>
           {canDispatch(user?.role) && (
             <>
-              <button type="button" className="rounded p-1.5 text-[#6B7280] hover:bg-gray-100 hover:text-primary"><Pencil className="h-4 w-4" /></button>
+              <button type="button" title="Edit" onClick={() => openDetail(row.original.id, 'edit')} className="rounded p-1.5 text-[#6B7280] hover:bg-gray-100 hover:text-primary"><Pencil className="h-4 w-4" /></button>
               <button type="button" title="Dispatch" onClick={() => dispatchMut.mutate(row.original.id)} className="rounded p-1.5 text-[#6B7280] hover:bg-gray-100 hover:text-accent"><Send className="h-4 w-4" /></button>
             </>
           )}
@@ -101,7 +110,9 @@ export default function InvoicesPage() {
           <Input type="date" label="To" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
         </div>
       </Card>
-      {isLoading ? (
+      {isError ? (
+        <QueryError message="Could not load invoices." onRetry={refetch} />
+      ) : isLoading ? (
         <Card><p className="animate-pulse p-8 text-center text-sm text-[#6B7280]">Loading invoices…</p></Card>
       ) : filtered.length === 0 ? (
         <EmptyState title="No invoices found" description={search || statusFilter ? 'Try adjusting your filters.' : 'No invoices yet — create your first one.'} actionLabel={canDispatch(user?.role) ? 'New Invoice' : undefined} onAction={() => setDrawerOpen(true)} />
@@ -139,6 +150,12 @@ export default function InvoicesPage() {
         </Card>
       )}
       <NewInvoiceDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} />
+      <InvoiceDetailDrawer
+        invoiceId={detailId}
+        mode={detailMode}
+        open={!!detailId}
+        onClose={() => setDetailId(null)}
+      />
     </div>
   );
 }

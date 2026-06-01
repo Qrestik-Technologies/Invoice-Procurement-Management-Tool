@@ -1,0 +1,57 @@
+services:
+  postgresql:
+    ports: []
+    restart: unless-stopped
+
+  redis:
+    ports: []
+    restart: unless-stopped
+
+  web:
+    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2"
+    volumes:
+      - uploads_data:/app/uploads
+    ports: []
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health/ready"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  celery_worker:
+    volumes:
+      - uploads_data:/app/uploads
+    restart: unless-stopped
+
+  celery_beat:
+    volumes: []
+    restart: unless-stopped
+
+  nginx:
+    restart: unless-stopped
+    ports: []
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/api/health/live"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - nginx
+    profiles: [tls]
+
+volumes:
+  caddy_data:
+  caddy_config:
