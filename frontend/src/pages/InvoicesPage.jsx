@@ -1,161 +1,150 @@
-import { useState, useMemo } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import {
-  useReactTable, getCoreRowModel, getSortedRowModel, flexRender,
-} from '@tanstack/react-table';
-import { Plus, Search, Eye, Pencil, Send, ChevronUp, ChevronDown } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Plus, Download } from 'lucide-react';
 import toast from 'react-hot-toast';
-import PageHeader from '../components/ui/PageHeader';
+import apiClient from '../api/client';
 import Button from '../components/ui/Button';
-import StatusBadge from '../components/ui/Badge';
-import Card from '../components/ui/Card';
-import EmptyState from '../components/ui/EmptyState';
-import QueryError from '../components/ui/QueryError';
 import { Input, Select } from '../components/ui/FormFields';
-import NewInvoiceDrawer from '../components/invoices/NewInvoiceDrawer';
-import InvoiceDetailDrawer from '../components/invoices/InvoiceDetailDrawer';
-import { fetchInvoices, dispatchInvoice } from '../api/invoices';
 import { useAuth } from '../context/AuthContext';
-import { formatCurrency, formatDate } from '../utils/format';
-import { canDispatch, toApiStatus, toDisplayStatus } from '../utils/status';
 
-const STATUS_OPTIONS = ['Draft', 'Pending', 'Dispatched', 'Received', 'Overdue'];
+const STATUS_COLORS = {
+  draft: 'bg-gray-100 text-gray-600',
+  sent: 'bg-blue-100 text-blue-700',
+  received: 'bg-green-100 text-green-700',
+  paid: 'bg-emerald-100 text-emerald-700',
+  overdue: 'bg-red-100 text-red-700',
+  cancelled: 'bg-gray-100 text-gray-500',
+};
+
+function Modal({ title, onClose, children }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+      <div className="w-full max-w-lg rounded-xl bg-white shadow-xl">
+        <div className="flex items-center justify-between border-b border-border px-6 py-4">
+          <h3 className="font-semibold text-[#111827]">{title}</h3>
+          <button onClick={onClose} className="text-[#9CA3AF] hover:text-[#111827]">✕</button>
+        </div>
+        <div className="p-6">{children}</div>
+      </div>
+    </div>
+  );
+}
 
 export default function InvoicesPage() {
   const { user } = useAuth();
-  const queryClient = useQueryClient();
-  const [drawerOpen, setDrawerOpen] = useState(false);
-  const [detailId, setDetailId] = useState(null);
-  const [detailMode, setDetailMode] = useState('view');
-  const [search, setSearch] = useState('');
+  const [invoices, setInvoices] = useState([]);
+  const [customers, setCustomers] = useState([]);
+  const [showModal, setShowModal] = useState(false);
   const [statusFilter, setStatusFilter] = useState('');
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
+  const [form, setForm] = useState({ invoice_number: '', customer_id: '', amount: '', currency: 'USD', issue_date: '', due_date: '', description: '' });
 
-  const params = useMemo(() => ({
-    status: statusFilter ? toApiStatus(statusFilter) : undefined,
-    date_from: dateFrom || undefined,
-    date_to: dateTo || undefined,
-  }), [statusFilter, dateFrom, dateTo]);
-
-  const { data: invoices = [], isLoading, isError, refetch } = useQuery({
-    queryKey: ['invoices', params],
-    queryFn: () => fetchInvoices(params),
-  });
-
-  const dispatchMut = useMutation({
-    mutationFn: dispatchInvoice,
-    onSuccess: () => {
-      toast.success('Invoice dispatched');
-      queryClient.invalidateQueries({ queryKey: ['invoices'] });
-    },
-    onError: (e) => toast.error(e.response?.data?.message || e.response?.data?.detail || 'Dispatch failed'),
-  });
-
-  const openDetail = (id, mode) => {
-    setDetailId(id);
-    setDetailMode(mode);
+  const load = () => {
+    const params = statusFilter ? `?status=${statusFilter}` : '';
+    apiClient.get(`/invoices${params}`).then(r => setInvoices(r.data.data || [])).catch(() => {});
   };
 
-  const filtered = useMemo(() => {
-    if (!search) return invoices;
-    const q = search.toLowerCase();
-    return invoices.filter(
-      (i) => i.invoice_number?.toLowerCase().includes(q) || i.customer_name?.toLowerCase().includes(q),
-    );
-  }, [invoices, search]);
+  useEffect(() => {
+    load();
+    apiClient.get('/customers').then(r => setCustomers(r.data.data || [])).catch(() => {});
+  }, [statusFilter]);
 
-  const columns = useMemo(() => [
-    { accessorKey: 'invoice_number', header: 'Invoice No', cell: ({ getValue }) => <span className="font-medium text-primary">{getValue()}</span> },
-    { accessorKey: 'customer_name', header: 'Customer' },
-    { accessorKey: 'invoice_date', header: 'Date', cell: ({ getValue }) => formatDate(getValue()) },
-    { accessorKey: 'total', header: 'Amount', cell: ({ getValue }) => <span className="font-medium">{formatCurrency(Number(getValue()))}</span> },
-    { accessorKey: 'status', header: 'Status', cell: ({ getValue }) => <StatusBadge status={toDisplayStatus(getValue())} /> },
-    { accessorKey: 'milestone_name', header: 'Milestone', cell: ({ getValue }) => <span className="max-w-[180px] truncate text-[#6B7280]">{getValue() || '—'}</span> },
-    {
-      id: 'actions',
-      header: 'Actions',
-      enableSorting: false,
-      cell: ({ row }) => (
-        <div className="flex gap-1">
-          <button type="button" title="View" onClick={() => openDetail(row.original.id, 'view')} className="rounded p-1.5 text-[#6B7280] hover:bg-gray-100 hover:text-primary"><Eye className="h-4 w-4" /></button>
-          {canDispatch(user?.role) && (
-            <>
-              <button type="button" title="Edit" onClick={() => openDetail(row.original.id, 'edit')} className="rounded p-1.5 text-[#6B7280] hover:bg-gray-100 hover:text-primary"><Pencil className="h-4 w-4" /></button>
-              <button type="button" title="Dispatch" onClick={() => dispatchMut.mutate(row.original.id)} className="rounded p-1.5 text-[#6B7280] hover:bg-gray-100 hover:text-accent"><Send className="h-4 w-4" /></button>
-            </>
-          )}
-        </div>
-      ),
-    },
-  ], [user, dispatchMut]);
+  const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }));
 
-  const table = useReactTable({ data: filtered, columns, getCoreRowModel: getCoreRowModel(), getSortedRowModel: getSortedRowModel() });
+  const handleCreate = async (e) => {
+    e.preventDefault();
+    try {
+      await apiClient.post('/invoices', { ...form, customer_id: Number(form.customer_id), amount: Number(form.amount) });
+      toast.success('Invoice created');
+      setShowModal(false);
+      setForm({ invoice_number: '', customer_id: '', amount: '', currency: 'USD', issue_date: '', due_date: '', description: '' });
+      load();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Failed to create invoice');
+    }
+  };
+
+  const handleExport = async () => {
+    const params = statusFilter ? `?status=${statusFilter}` : '';
+    const res = await apiClient.get(`/invoices/export/excel${params}`, { responseType: 'blob' });
+    const url = URL.createObjectURL(res.data);
+    const a = document.createElement('a'); a.href = url; a.download = 'invoices.xlsx'; a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const canEdit = user?.role === 'admin' || user?.role === 'entry';
 
   return (
-    <div>
-      <PageHeader title="Invoices" description="Create, track, and dispatch customer invoices"
-        action={canDispatch(user?.role) && <Button icon={Plus} onClick={() => setDrawerOpen(true)}>New Invoice</Button>} />
-      <Card className="mb-4">
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <div className="relative sm:col-span-2 lg:col-span-1">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#9CA3AF]" />
-            <input type="text" placeholder="Search invoice no or customer…" value={search} onChange={(e) => setSearch(e.target.value)} className="w-full rounded-lg border border-border py-2 pl-9 pr-3 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20" />
-          </div>
-          <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
-            <option value="">All statuses</option>
-            {STATUS_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
-          </Select>
-          <Input type="date" label="From" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
-          <Input type="date" label="To" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
+    <div className="p-8">
+      <div className="mb-6 flex items-center justify-between">
+        <h1 className="text-2xl font-bold text-[#111827]">Invoices</h1>
+        <div className="flex gap-3">
+          <Button variant="secondary" size="sm" onClick={handleExport}><Download className="h-4 w-4" /> Export</Button>
+          {canEdit && <Button size="sm" onClick={() => setShowModal(true)}><Plus className="h-4 w-4" /> New Invoice</Button>}
         </div>
-      </Card>
-      {isError ? (
-        <QueryError message="Could not load invoices." onRetry={refetch} />
-      ) : isLoading ? (
-        <Card><p className="animate-pulse p-8 text-center text-sm text-[#6B7280]">Loading invoices…</p></Card>
-      ) : filtered.length === 0 ? (
-        <EmptyState title="No invoices found" description={search || statusFilter ? 'Try adjusting your filters.' : 'No invoices yet — create your first one.'} actionLabel={canDispatch(user?.role) ? 'New Invoice' : undefined} onAction={() => setDrawerOpen(true)} />
-      ) : (
-        <Card padding={false} className="overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                {table.getHeaderGroups().map((hg) => (
-                  <tr key={hg.id} className="border-b border-border bg-gray-50/80">
-                    {hg.headers.map((header) => (
-                      <th key={header.id} className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-[#6B7280]">
-                        {header.column.getCanSort() ? (
-                          <button type="button" className="flex items-center gap-1" onClick={header.column.getToggleSortingHandler()}>
-                            {flexRender(header.column.columnDef.header, header.getContext())}
-                            {{ asc: <ChevronUp className="h-3 w-3" />, desc: <ChevronDown className="h-3 w-3" /> }[header.column.getIsSorted()] ?? null}
-                          </button>
-                        ) : flexRender(header.column.columnDef.header, header.getContext())}
-                      </th>
-                    ))}
-                  </tr>
+      </div>
+
+      <div className="mb-4 flex gap-3">
+        {['', 'draft', 'sent', 'received', 'overdue', 'paid', 'cancelled'].map(s => (
+          <button key={s} onClick={() => setStatusFilter(s)}
+            className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${statusFilter === s ? 'bg-primary text-white' : 'bg-white border border-border text-[#6B7280] hover:border-primary hover:text-primary'}`}>
+            {s || 'All'}
+          </button>
+        ))}
+      </div>
+
+      <div className="rounded-xl border border-border bg-white shadow-sm overflow-hidden">
+        {invoices.length === 0 ? (
+          <p className="px-6 py-12 text-center text-sm text-[#9CA3AF]">No invoices found</p>
+        ) : (
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border bg-gray-50 text-left text-xs font-medium text-[#6B7280]">
+                {['Invoice #', 'Customer', 'Amount', 'Issue Date', 'Due Date', 'Status'].map(h => (
+                  <th key={h} className="px-5 py-3">{h}</th>
                 ))}
-              </thead>
-              <tbody className="divide-y divide-border">
-                {table.getRowModel().rows.map((row) => (
-                  <tr key={row.id} className="hover:bg-gray-50/80">
-                    {row.getVisibleCells().map((cell) => (
-                      <td key={cell.id} className="px-4 py-3">{flexRender(cell.column.columnDef.cell, cell.getContext())}</td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </Card>
+              </tr>
+            </thead>
+            <tbody>
+              {invoices.map(inv => (
+                <tr key={inv.id} className="border-b border-border last:border-0 hover:bg-gray-50">
+                  <td className="px-5 py-3 font-medium text-[#111827]">{inv.invoice_number}</td>
+                  <td className="px-5 py-3 text-[#6B7280]">{customers.find(c => c.id === inv.customer_id)?.name || inv.customer_id}</td>
+                  <td className="px-5 py-3">${Number(inv.amount).toLocaleString()} {inv.currency}</td>
+                  <td className="px-5 py-3 text-[#6B7280]">{inv.issue_date}</td>
+                  <td className="px-5 py-3 text-[#6B7280]">{inv.due_date}</td>
+                  <td className="px-5 py-3">
+                    <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${STATUS_COLORS[inv.status] || ''}`}>{inv.status}</span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {showModal && (
+        <Modal title="New Invoice" onClose={() => setShowModal(false)}>
+          <form onSubmit={handleCreate} className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <Input label="Invoice #" value={form.invoice_number} onChange={set('invoice_number')} required placeholder="INV-001" />
+              <Select label="Customer" value={form.customer_id} onChange={set('customer_id')} required>
+                <option value="">Select customer</option>
+                {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </Select>
+              <Input label="Amount" type="number" step="0.01" value={form.amount} onChange={set('amount')} required />
+              <Select label="Currency" value={form.currency} onChange={set('currency')}>
+                {['USD','EUR','GBP','AED'].map(c => <option key={c}>{c}</option>)}
+              </Select>
+              <Input label="Issue Date" type="date" value={form.issue_date} onChange={set('issue_date')} required />
+              <Input label="Due Date" type="date" value={form.due_date} onChange={set('due_date')} required />
+            </div>
+            <Input label="Description" value={form.description} onChange={set('description')} placeholder="Optional" />
+            <div className="flex justify-end gap-3 pt-2">
+              <Button variant="secondary" onClick={() => setShowModal(false)}>Cancel</Button>
+              <Button type="submit">Create Invoice</Button>
+            </div>
+          </form>
+        </Modal>
       )}
-      <NewInvoiceDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} />
-      <InvoiceDetailDrawer
-        invoiceId={detailId}
-        mode={detailMode}
-        open={!!detailId}
-        onClose={() => setDetailId(null)}
-      />
     </div>
   );
 }
