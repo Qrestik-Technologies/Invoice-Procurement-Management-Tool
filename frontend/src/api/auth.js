@@ -6,6 +6,35 @@ export async function login(email, password) {
   return data.data;
 }
 
+export async function register({ name, email, password }) {
+  const { data } = await apiClient.post('/auth/register', { name, email, password });
+  return data;
+}
+
+export async function verifyEmail(email, code) {
+  const { data } = await apiClient.post('/auth/verify-email', { email, code });
+  return data;
+}
+
+export async function resendCode(email) {
+  const { data } = await apiClient.post('/auth/resend-code', { email });
+  return data;
+}
+
+export async function forgotPassword(email) {
+  const { data } = await apiClient.post('/auth/forgot-password', { email });
+  return data;
+}
+
+export async function resetPassword(email, code, newPassword) {
+  const { data } = await apiClient.post('/auth/reset-password', {
+    email,
+    code,
+    new_password: newPassword,
+  });
+  return data;
+}
+
 export async function fetchMe() {
   const { data } = await apiClient.get('/auth/me');
   return data.data;
