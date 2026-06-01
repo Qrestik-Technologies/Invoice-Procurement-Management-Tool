@@ -9,8 +9,7 @@ from alembic import context
 from app.core.config import settings
 from app.core.database import Base
 
-# Register all models so Alembic sees every table in metadata.
-from app.models import (  # noqa: F401
+from app.models import (  
     User, Customer, Invoice, Milestone, Payment, Reminder, Document, AuditLog,
 )
 
