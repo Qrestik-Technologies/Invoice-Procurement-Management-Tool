@@ -1,139 +1,90 @@
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
-import {
-  PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip,
-} from 'recharts';
-import PageHeader, { StatCard } from '../components/ui/PageHeader';
-import Card, { CardHeader } from '../components/ui/Card';
-import StatusBadge from '../components/ui/Badge';
-import Button from '../components/ui/Button';
-import { AlertBadge } from '../components/ui/Badge';
-import { TableSkeleton, StatCardSkeleton } from '../components/ui/Skeleton';
-import { fetchDashboardStats, fetchUpcomingMilestones } from '../api/dashboard';
-import { fetchInvoices } from '../api/invoices';
-import { formatCurrency, formatDate } from '../utils/format';
-import { toDisplayAlert, toDisplayStatus } from '../utils/status';
+import { FileText, Users, TrendingUp, AlertCircle } from 'lucide-react';
+import apiClient from '../api/client';
+import { useAuth } from '../context/AuthContext';
 
-const CHART_COLORS = {
-  draft: '#6B7280',
-  reviewed: '#D97706',
-  pending: '#D97706',
-  dispatched: '#2563EB',
-  received: '#16A34A',
-  overdue: '#DC2626',
-};
+function StatCard({ icon: Icon, label, value, color, to }) {
+  return (
+    <Link to={to} className="flex items-center gap-4 rounded-xl border border-border bg-white p-5 shadow-sm hover:shadow-md transition-shadow">
+      <div className={`flex h-12 w-12 items-center justify-center rounded-xl ${color}`}>
+        <Icon className="h-6 w-6 text-white" />
+      </div>
+      <div>
+        <p className="text-2xl font-bold text-[#111827]">{value ?? '—'}</p>
+        <p className="text-sm text-[#6B7280]">{label}</p>
+      </div>
+    </Link>
+  );
+}
 
 export default function DashboardPage() {
-  const { data: stats, isLoading: statsLoading } = useQuery({
-    queryKey: ['dashboard-stats'],
-    queryFn: fetchDashboardStats,
-  });
-  const { data: upcoming = [] } = useQuery({
-    queryKey: ['upcoming-milestones'],
-    queryFn: () => fetchUpcomingMilestones(7),
-  });
-  const { data: invoices = [], isLoading: invLoading } = useQuery({
-    queryKey: ['invoices'],
-    queryFn: () => fetchInvoices(),
-  });
+  const { user } = useAuth();
+  const [summary, setSummary] = useState(null);
+  const [invoices, setInvoices] = useState([]);
 
-  const loading = statsLoading || invLoading;
-  const recent = invoices.slice(0, 10);
-  const breakdown = stats?.status_breakdown
-    ? Object.entries(stats.status_breakdown).map(([name, value]) => ({ name, value }))
-    : [];
+  useEffect(() => {
+    apiClient.get('/cash-flow/summary').then(r => setSummary(r.data.data)).catch(() => {});
+    apiClient.get('/invoices').then(r => setInvoices(r.data.data?.slice(0, 5) || [])).catch(() => {});
+  }, []);
 
-  if (loading) {
-    return (
-      <div>
-        <PageHeader title="Dashboard" description="Overview of your invoice activity" />
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          {Array.from({ length: 4 }).map((_, i) => <StatCardSkeleton key={i} />)}
-        </div>
-        <div className="mt-6"><Card><TableSkeleton rows={4} cols={5} /></Card></div>
-      </div>
-    );
-  }
+  const statusColor = {
+    draft: 'bg-gray-100 text-gray-600',
+    sent: 'bg-blue-100 text-blue-700',
+    received: 'bg-green-100 text-green-700',
+    paid: 'bg-emerald-100 text-emerald-700',
+    overdue: 'bg-red-100 text-red-700',
+    cancelled: 'bg-gray-100 text-gray-500',
+  };
 
   return (
-    <div>
-      <PageHeader title="Dashboard" description="Overview of your invoice activity and upcoming milestones" />
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard label="Total Invoices" value={stats?.total_invoices ?? 0} subtext="All time across customers" />
-        <StatCard label="Pending Payment" value={formatCurrency(stats?.pending_amount ?? 0)} subtext="Awaiting customer payment" />
-        <StatCard label="Overdue" value={stats?.overdue_count ?? 0} subtext="Require immediate follow-up" trend="down" />
-        <StatCard label="Received This Month" value={formatCurrency(stats?.received_this_month ?? 0)} subtext="Current month collections" trend="up" />
+    <div className="p-8">
+      <div className="mb-8">
+        <h1 className="text-2xl font-bold text-[#111827]">Welcome back, {user?.name?.split(' ')[0]} 👋</h1>
+        <p className="mt-1 text-sm text-[#6B7280]">Here's your invoice overview for this month</p>
       </div>
 
-      <div className="mt-6 grid gap-6 lg:grid-cols-5">
-        <Card className="lg:col-span-2">
-          <CardHeader title="Invoice Status Breakdown" description="Current distribution by status" />
-          {breakdown.length === 0 ? (
-            <p className="py-8 text-center text-sm text-[#6B7280]">No invoice data available</p>
-          ) : (
-            <ResponsiveContainer width="100%" height={260}>
-              <PieChart>
-                <Pie data={breakdown} cx="50%" cy="50%" innerRadius={60} outerRadius={90} paddingAngle={3} dataKey="value" nameKey="name">
-                  {breakdown.map((entry) => (
-                    <Cell key={entry.name} fill={CHART_COLORS[entry.name] || '#6B7280'} />
-                  ))}
-                </Pie>
-                <Tooltip formatter={(value, name) => [`${value} invoices`, toDisplayStatus(name)]} />
-                <Legend formatter={(v) => toDisplayStatus(v)} />
-              </PieChart>
-            </ResponsiveContainer>
-          )}
-        </Card>
-
-        <Card className="lg:col-span-3 overflow-hidden" padding={false}>
-          <div className="border-b border-border px-5 py-4">
-            <CardHeader title="Recent Invoices" description="Last 10 invoices" action={<Link to="/invoices"><Button variant="ghost" size="sm">View all</Button></Link>} className="mb-0" />
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border bg-gray-50/80 text-left text-xs font-medium uppercase tracking-wide text-[#6B7280]">
-                  <th className="px-5 py-3">Invoice No</th>
-                  <th className="px-5 py-3">Customer</th>
-                  <th className="px-5 py-3">Amount</th>
-                  <th className="px-5 py-3">Status</th>
-                  <th className="px-5 py-3">Due Date</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {recent.map((inv) => (
-                  <tr key={inv.id} className="hover:bg-gray-50/80">
-                    <td className="px-5 py-3 font-medium text-primary">{inv.invoice_number}</td>
-                    <td className="px-5 py-3">{inv.customer_name}</td>
-                    <td className="px-5 py-3 font-medium">{formatCurrency(Number(inv.total))}</td>
-                    <td className="px-5 py-3"><StatusBadge status={toDisplayStatus(inv.status)} /></td>
-                    <td className="px-5 py-3 text-[#6B7280]">{formatDate(inv.due_date)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </Card>
+      <div className="mb-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <StatCard icon={TrendingUp} label="Total Invoiced" value={summary ? `$${Number(summary.total_invoiced).toLocaleString()}` : null} color="bg-primary" to="/invoices" />
+        <StatCard icon={FileText} label="Total Received" value={summary ? `$${Number(summary.total_received).toLocaleString()}` : null} color="bg-emerald-500" to="/invoices" />
+        <StatCard icon={AlertCircle} label="Overdue" value={summary?.overdue_count} color="bg-red-500" to="/invoices?status=overdue" />
+        <StatCard icon={Users} label="Drafts" value={summary?.draft_count} color="bg-amber-400" to="/invoices?status=draft" />
       </div>
 
-      <Card className="mt-6">
-        <CardHeader title="Upcoming Milestones" description="Due in the next 7 days" action={<Link to="/milestones"><Button variant="ghost" size="sm">View milestones</Button></Link>} />
-        {upcoming.length === 0 ? (
-          <p className="py-6 text-center text-sm text-[#6B7280]">No milestones due in the next 7 days</p>
+      <div className="rounded-xl border border-border bg-white shadow-sm">
+        <div className="flex items-center justify-between border-b border-border px-6 py-4">
+          <h2 className="font-semibold text-[#111827]">Recent Invoices</h2>
+          <Link to="/invoices" className="text-sm font-medium text-primary hover:underline">View all</Link>
+        </div>
+        {invoices.length === 0 ? (
+          <p className="px-6 py-8 text-center text-sm text-[#9CA3AF]">No invoices yet</p>
         ) : (
-          <div className="space-y-3">
-            {upcoming.map((m) => (
-              <div key={m.id} className="flex flex-col gap-2 rounded-lg border border-border p-4 hover:bg-gray-50 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <p className="font-medium">{m.project_name}</p>
-                  <p className="text-sm text-[#6B7280]">{m.customer_name} · Due {formatDate(m.end_date)}{m.linked_invoice_number ? ` · ${m.linked_invoice_number}` : ''}</p>
-                </div>
-                <AlertBadge status={toDisplayAlert(m.alert_status)} />
-              </div>
-            ))}
-          </div>
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border text-left text-xs font-medium text-[#6B7280]">
+                <th className="px-6 py-3">Invoice #</th>
+                <th className="px-6 py-3">Amount</th>
+                <th className="px-6 py-3">Due</th>
+                <th className="px-6 py-3">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {invoices.map(inv => (
+                <tr key={inv.id} className="border-b border-border last:border-0 hover:bg-gray-50">
+                  <td className="px-6 py-3 font-medium text-[#111827]">{inv.invoice_number}</td>
+                  <td className="px-6 py-3">${Number(inv.amount).toLocaleString()} {inv.currency}</td>
+                  <td className="px-6 py-3 text-[#6B7280]">{inv.due_date}</td>
+                  <td className="px-6 py-3">
+                    <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${statusColor[inv.status] || ''}`}>
+                      {inv.status}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         )}
-      </Card>
+      </div>
     </div>
   );
 }
