@@ -1,9 +1,20 @@
 import { cn } from '../../utils/cn';
 
-export default function PageHeader({ title, description, action }) {
+export default function PageHeader({
+  title,
+  description,
+  organizationName,
+  action,
+  showOrganization = true,
+}) {
   return (
     <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
       <div>
+        {showOrganization && organizationName && (
+          <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-primary">
+            {organizationName}
+          </p>
+        )}
         <h1 className="text-2xl font-semibold tracking-tight text-[#111827]">
           {title}
         </h1>

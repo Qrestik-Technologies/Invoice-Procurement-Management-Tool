@@ -1,12 +1,26 @@
 import { useEffect, useState } from 'react';
 import apiClient from '../api/client';
+import { useOrganization } from '../context/OrganizationContext';
+import { usePageMeta } from '../hooks/usePageMeta';
+import PageHeader from '../components/ui/PageHeader';
 
 export default function RemindersPage() {
+  const { organizationId } = useOrganization();
+  const meta = usePageMeta('Reminders', 'Scheduled payment follow-ups');
   const [reminders, setReminders] = useState([]);
-  useEffect(() => { apiClient.get('/reminders').then(r => setReminders(r.data.data || [])).catch(() => {}); }, []);
+
+  useEffect(() => {
+    if (!organizationId) return;
+    apiClient.get('/reminders').then(r => setReminders(r.data.data || [])).catch(() => setReminders([]));
+  }, [organizationId]);
+
   return (
     <div className="p-8">
-      <h1 className="mb-6 text-2xl font-bold text-[#111827]">Reminders</h1>
+      <PageHeader
+        title={meta.title}
+        organizationName={meta.organizationName}
+        description={meta.description}
+      />
       <div className="rounded-xl border border-border bg-white shadow-sm overflow-hidden">
         {reminders.length === 0 ? <p className="px-6 py-12 text-center text-sm text-[#9CA3AF]">No reminders scheduled</p> : (
           <table className="w-full text-sm">

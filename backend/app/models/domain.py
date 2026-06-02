@@ -23,6 +23,7 @@ class Customer(Base):
     __tablename__ = "customers"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), nullable=False, index=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     phone: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
@@ -34,6 +35,7 @@ class Customer(Base):
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
 
+    company = relationship("Company", back_populates="customers")
     invoices = relationship("Invoice", back_populates="customer")
 
 
@@ -41,7 +43,8 @@ class Invoice(Base):
     __tablename__ = "invoices"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    invoice_number: Mapped[str] = mapped_column(String(100), unique=True, nullable=False, index=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), nullable=False, index=True)
+    invoice_number: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
     customer_id: Mapped[int] = mapped_column(ForeignKey("customers.id"), nullable=False)
     uploaded_by: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
     status: Mapped[InvoiceStatus] = mapped_column(
@@ -60,6 +63,7 @@ class Invoice(Base):
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
 
+    company = relationship("Company", back_populates="invoices")
     customer = relationship("Customer", back_populates="invoices")
     uploader = relationship("User", back_populates="uploaded_invoices", foreign_keys=[uploaded_by])
     milestones = relationship("Milestone", back_populates="invoice", cascade="all, delete-orphan")

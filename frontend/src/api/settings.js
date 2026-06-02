@@ -5,8 +5,8 @@ export async function fetchSettings() {
   return data.data;
 }
 
-export async function updateCompanySettings(payload) {
-  const { data } = await apiClient.put('/settings/company', payload);
+export async function updateOrganizationSettings(payload) {
+  const { data } = await apiClient.put('/settings/organization', payload);
   return data.data;
 }
 
@@ -15,7 +15,16 @@ export async function updateEmailSettings(payload) {
   return data.data;
 }
 
-export async function updateTemplateSettings(payload) {
-  const { data } = await apiClient.put('/settings/template', payload);
+export async function updateInvoiceDefaults(payload) {
+  const { data } = await apiClient.put('/settings/invoice-defaults', payload);
   return data.data;
+}
+
+// Legacy alias
+export async function updateCompanySettings(payload) {
+  return updateOrganizationSettings(payload);
+}
+
+export async function updateTemplateSettings(payload) {
+  return updateInvoiceDefaults(payload);
 }

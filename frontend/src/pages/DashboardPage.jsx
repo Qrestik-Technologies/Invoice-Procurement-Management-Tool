@@ -3,6 +3,10 @@ import { Link } from 'react-router-dom';
 import { FileText, Users, TrendingUp, AlertCircle } from 'lucide-react';
 import apiClient from '../api/client';
 import { useAuth } from '../context/AuthContext';
+import { useOrganization } from '../context/OrganizationContext';
+import OrganizationSwitcher from '../components/organization/OrganizationSwitcher';
+
+const COVER_SRC = '/cover.png';
 
 function StatCard({ icon: Icon, label, value, color, to }) {
   return (
@@ -20,13 +24,17 @@ function StatCard({ icon: Icon, label, value, color, to }) {
 
 export default function DashboardPage() {
   const { user } = useAuth();
+  const { organizationId, organization } = useOrganization();
+  const firstName = user?.name?.split(' ')[0] || 'there';
+  const orgLabel = organization?.name || 'No organization selected';
   const [summary, setSummary] = useState(null);
   const [invoices, setInvoices] = useState([]);
 
   useEffect(() => {
-    apiClient.get('/cash-flow/summary').then(r => setSummary(r.data.data)).catch(() => {});
-    apiClient.get('/invoices').then(r => setInvoices(r.data.data?.slice(0, 5) || [])).catch(() => {});
-  }, []);
+    if (!organizationId) return;
+    apiClient.get('/cash-flow/summary').then(r => setSummary(r.data.data)).catch(() => setSummary(null));
+    apiClient.get('/invoices').then(r => setInvoices(r.data.data?.slice(0, 5) || [])).catch(() => setInvoices([]));
+  }, [organizationId]);
 
   const statusColor = {
     draft: 'bg-gray-100 text-gray-600',
@@ -39,9 +47,24 @@ export default function DashboardPage() {
 
   return (
     <div className="p-8">
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold text-[#111827]">Welcome back, {user?.name?.split(' ')[0]} 👋</h1>
-        <p className="mt-1 text-sm text-[#6B7280]">Here's your invoice overview for this month</p>
+      <div
+        className="relative mb-8 overflow-hidden rounded-xl bg-cover bg-center shadow-md"
+        style={{ backgroundImage: `url(${COVER_SRC})` }}
+      >
+        <div className="absolute inset-0 bg-gradient-to-r from-[#0b1f3f]/85 via-[#0d2847]/55 to-[#0b1f3f]/30" />
+        <div className="relative px-6 py-10 md:px-10 md:py-12">
+          <h1 className="text-2xl font-bold tracking-tight text-white md:text-3xl">
+            Welcome back, {firstName} 👋
+          </h1>
+          <p className="mt-2 max-w-2xl text-sm text-white/95 md:text-base">
+            {orgLabel} — Here&apos;s your invoice overview for this month
+          </p>
+        </div>
+      </div>
+
+      <div className="mb-8 rounded-xl border border-primary/20 bg-primary/5 px-5 py-5">
+        <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-primary">Working as</p>
+        <OrganizationSwitcher variant="dashboard" />
       </div>
 
       <div className="mb-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -53,11 +76,11 @@ export default function DashboardPage() {
 
       <div className="rounded-xl border border-border bg-white shadow-sm">
         <div className="flex items-center justify-between border-b border-border px-6 py-4">
-          <h2 className="font-semibold text-[#111827]">Recent Invoices</h2>
+          <h2 className="font-semibold text-[#111827]">Recent Invoices — {organization?.name || '…'}</h2>
           <Link to="/invoices" className="text-sm font-medium text-primary hover:underline">View all</Link>
         </div>
         {invoices.length === 0 ? (
-          <p className="px-6 py-8 text-center text-sm text-[#9CA3AF]">No invoices yet</p>
+          <p className="px-6 py-8 text-center text-sm text-[#9CA3AF]">No invoices yet for this organization</p>
         ) : (
           <table className="w-full text-sm">
             <thead>

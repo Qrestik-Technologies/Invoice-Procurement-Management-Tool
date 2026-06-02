@@ -7,27 +7,38 @@ from typing import Sequence, Union
 
 import sqlalchemy as sa
 from alembic import op
+from sqlalchemy.dialects import postgresql
 
 revision: str = "0003"
 down_revision: Union[str, None] = "0002"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
-invoice_status = sa.Enum(
+invoice_status = postgresql.ENUM(
     "draft", "sent", "received", "overdue", "paid", "cancelled",
-    name="invoicestatus",
+    name="invoicestatus", create_type=False,
 )
-milestone_status = sa.Enum(
+milestone_status = postgresql.ENUM(
     "pending", "in_progress", "completed", "cancelled",
-    name="milestonestatus",
+    name="milestonestatus", create_type=False,
 )
-audit_action = sa.Enum(
+audit_action = postgresql.ENUM(
     "created", "updated", "deleted", "status_changed", "exported", "synced",
-    name="auditaction",
+    name="auditaction", create_type=False,
 )
 
 
 def upgrade() -> None:
+    postgresql.ENUM(
+        "draft", "sent", "received", "overdue", "paid", "cancelled", name="invoicestatus"
+    ).create(op.get_bind(), checkfirst=True)
+    postgresql.ENUM(
+        "pending", "in_progress", "completed", "cancelled", name="milestonestatus"
+    ).create(op.get_bind(), checkfirst=True)
+    postgresql.ENUM(
+        "created", "updated", "deleted", "status_changed", "exported", "synced",
+        name="auditaction",
+    ).create(op.get_bind(), checkfirst=True)
     # ── customers ─────────────────────────────────────────────────────────────
     op.create_table(
         "customers",

@@ -5,6 +5,9 @@ import apiClient from '../api/client';
 import Button from '../components/ui/Button';
 import { Input, Select } from '../components/ui/FormFields';
 import { useAuth } from '../context/AuthContext';
+import { useOrganization } from '../context/OrganizationContext';
+import { usePageMeta } from '../hooks/usePageMeta';
+import PageHeader from '../components/ui/PageHeader';
 
 const STATUS_COLORS = {
   pending: 'bg-amber-100 text-amber-700',
@@ -29,6 +32,8 @@ function Modal({ title, onClose, children }) {
 
 export default function MilestonesPage() {
   const { user } = useAuth();
+  const { organizationId } = useOrganization();
+  const meta = usePageMeta('Milestones', 'Track delivery and payment milestones');
   const [milestones, setMilestones] = useState([]);
   const [invoices, setInvoices] = useState([]);
   const [showModal, setShowModal] = useState(false);
@@ -38,9 +43,10 @@ export default function MilestonesPage() {
 
   const load = () => apiClient.get('/milestones').then(r => setMilestones(r.data.data || [])).catch(() => {});
   useEffect(() => {
+    if (!organizationId) return;
     load();
     apiClient.get('/invoices').then(r => setInvoices(r.data.data || [])).catch(() => {});
-  }, []);
+  }, [organizationId]);
 
   const handleCreate = async (e) => {
     e.preventDefault();
@@ -55,10 +61,12 @@ export default function MilestonesPage() {
 
   return (
     <div className="p-8">
-      <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-[#111827]">Milestones</h1>
-        {canEdit && <Button size="sm" onClick={() => setShowModal(true)}><Plus className="h-4 w-4" /> New Milestone</Button>}
-      </div>
+      <PageHeader
+        title={meta.title}
+        organizationName={meta.organizationName}
+        description={meta.description}
+        action={canEdit ? <Button size="sm" onClick={() => setShowModal(true)}><Plus className="h-4 w-4" /> New Milestone</Button> : null}
+      />
       <div className="rounded-xl border border-border bg-white shadow-sm overflow-hidden">
         {milestones.length === 0 ? <p className="px-6 py-12 text-center text-sm text-[#9CA3AF]">No milestones</p> : (
           <table className="w-full text-sm">

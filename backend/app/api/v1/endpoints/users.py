@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.core.rbac import require_admin
 from app.core.security import hash_password
+from app.models.organization import Company
 from app.models.users import User
 from app.schemas import APIResponse, UserCreate, UserRead, UserUpdate
 
@@ -34,11 +35,17 @@ async def create_user(
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=400, detail="Email already registered")
 
+    if body.company_id is not None:
+        company = await db.get(Company, body.company_id)
+        if not company:
+            raise HTTPException(status_code=400, detail="Company not found")
+
     user = User(
         name=body.name,
         email=body.email,
         hashed_password=hash_password(body.password),
         role=body.role,
+        company_id=body.company_id,
         is_active=True,  # admin-created accounts are active by default
     )
     db.add(user)
@@ -59,8 +66,17 @@ async def update_user(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    for field, value in body.model_dump(exclude_none=True).items():
+    updates = body.model_dump(exclude_unset=True)
+    if "company_id" in updates and updates["company_id"] is not None:
+        company = await db.get(Company, updates["company_id"])
+        if not company:
+            raise HTTPException(status_code=400, detail="Company not found")
+
+    password = updates.pop("password", None)
+    for field, value in updates.items():
         setattr(user, field, value)
+    if password:
+        user.hashed_password = hash_password(password)
     await db.commit()
     await db.refresh(user)
     return APIResponse(data=UserRead.model_validate(user), message="User updated")

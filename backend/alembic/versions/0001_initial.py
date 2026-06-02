@@ -1,17 +1,23 @@
 from typing import Sequence, Union
+
 import sqlalchemy as sa
 from alembic import op
+from sqlalchemy.dialects import postgresql
 
 revision: str = "0001"
 down_revision: Union[str, None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
-user_role = sa.Enum("admin", "entry", "readonly", name="userrole")
+user_role = postgresql.ENUM(
+    "admin", "entry", "readonly", name="userrole", create_type=False
+)
 
 
 def upgrade() -> None:
-    user_role.create(op.get_bind(), checkfirst=True)
+    postgresql.ENUM("admin", "entry", "readonly", name="userrole").create(
+        op.get_bind(), checkfirst=True
+    )
     op.create_table(
         "users",
         sa.Column("id", sa.Integer, primary_key=True, autoincrement=True),

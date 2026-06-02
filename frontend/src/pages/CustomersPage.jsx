@@ -5,6 +5,9 @@ import apiClient from '../api/client';
 import Button from '../components/ui/Button';
 import { Input } from '../components/ui/FormFields';
 import { useAuth } from '../context/AuthContext';
+import { useOrganization } from '../context/OrganizationContext';
+import { usePageMeta } from '../hooks/usePageMeta';
+import PageHeader from '../components/ui/PageHeader';
 
 function Modal({ title, onClose, children }) {
   return (
@@ -24,6 +27,8 @@ const EMPTY = { name: '', email: '', phone: '', address: '', tax_id: '', notes: 
 
 export default function CustomersPage() {
   const { user } = useAuth();
+  const { organizationId } = useOrganization();
+  const meta = usePageMeta('Customers', 'Client accounts for invoices and billing');
   const [customers, setCustomers] = useState([]);
   const [showModal, setShowModal] = useState(false);
   const [form, setForm] = useState(EMPTY);
@@ -31,7 +36,10 @@ export default function CustomersPage() {
   const canEdit = user?.role === 'admin' || user?.role === 'entry';
 
   const load = () => apiClient.get('/customers').then(r => setCustomers(r.data.data || [])).catch(() => {});
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    if (!organizationId) return;
+    load();
+  }, [organizationId]);
 
   const handleCreate = async (e) => {
     e.preventDefault();
@@ -48,10 +56,12 @@ export default function CustomersPage() {
 
   return (
     <div className="p-8">
-      <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-[#111827]">Customers</h1>
-        {canEdit && <Button size="sm" onClick={() => setShowModal(true)}><Plus className="h-4 w-4" /> New Customer</Button>}
-      </div>
+      <PageHeader
+        title={meta.title}
+        organizationName={meta.organizationName}
+        description={meta.description}
+        action={canEdit ? <Button size="sm" onClick={() => setShowModal(true)}><Plus className="h-4 w-4" /> New Customer</Button> : null}
+      />
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {customers.length === 0 && <p className="col-span-full text-center text-sm text-[#9CA3AF] py-12">No customers yet</p>}

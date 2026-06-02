@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.company_scope import get_company_scope
 from app.core.database import get_db
 from app.core.rbac import require_admin, require_any_role, require_entry_or_above
 from app.core.security import get_redis
@@ -34,9 +35,12 @@ payments_router = APIRouter(prefix="/payments", tags=["payments"])
 async def list_payments(
     db: Annotated[AsyncSession, Depends(get_db)],
     _=Depends(require_any_role),
+    company_id: Annotated[int | None, Depends(get_company_scope)] = None,
     invoice_id: Optional[int] = Query(None),
 ):
     q = select(Payment)
+    if company_id is not None:
+        q = q.join(Invoice).where(Invoice.company_id == company_id)
     if invoice_id:
         q = q.where(Payment.invoice_id == invoice_id)
     result = await db.execute(q.order_by(Payment.paid_at.desc()))
@@ -72,9 +76,12 @@ reminders_router = APIRouter(prefix="/reminders", tags=["reminders"])
 async def list_reminders(
     db: Annotated[AsyncSession, Depends(get_db)],
     _=Depends(require_any_role),
+    company_id: Annotated[int | None, Depends(get_company_scope)] = None,
     invoice_id: Optional[int] = Query(None),
 ):
     q = select(Reminder)
+    if company_id is not None:
+        q = q.join(Invoice).where(Invoice.company_id == company_id)
     if invoice_id:
         q = q.where(Reminder.invoice_id == invoice_id)
     result = await db.execute(q.order_by(Reminder.scheduled_at))
@@ -122,6 +129,7 @@ cashflow_router = APIRouter(prefix="/cash-flow", tags=["cash-flow"])
 async def cash_flow_summary(
     db: Annotated[AsyncSession, Depends(get_db)],
     _=Depends(require_any_role),
+    company_id: Annotated[int | None, Depends(get_company_scope)] = None,
     start: Optional[date] = Query(None, description="Period start (YYYY-MM-DD)"),
     end: Optional[date] = Query(None, description="Period end (YYYY-MM-DD)"),
     currency: str = Query("USD"),
@@ -135,6 +143,8 @@ async def cash_flow_summary(
         Invoice.issue_date >= period_start,
         Invoice.issue_date <= period_end,
     )
+    if company_id is not None:
+        q = q.where(Invoice.company_id == company_id)
     result = await db.execute(q)
     invoices = result.scalars().all()
 

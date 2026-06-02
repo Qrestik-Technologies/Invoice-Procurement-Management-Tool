@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.company_scope import get_company_scope
 from app.core.database import get_db
 from app.core.rbac import require_admin, require_any_role, require_entry_or_above
 from app.models.domain import Invoice, Milestone
@@ -20,9 +21,12 @@ router = APIRouter(prefix="/milestones", tags=["milestones"])
 async def list_milestones(
     db: Annotated[AsyncSession, Depends(get_db)],
     _=Depends(require_any_role),
+    company_id: Annotated[int | None, Depends(get_company_scope)] = None,
     invoice_id: int | None = Query(None),
 ):
     q = select(Milestone)
+    if company_id is not None:
+        q = q.join(Invoice).where(Invoice.company_id == company_id)
     if invoice_id:
         q = q.where(Milestone.invoice_id == invoice_id)
     result = await db.execute(q.order_by(Milestone.due_date))

@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.company_scope import get_company_scope
 from app.core.database import get_db
 from app.core.rbac import require_admin, require_any_role, require_entry_or_above
 from app.models.domain import Customer
@@ -19,8 +20,12 @@ router = APIRouter(prefix="/customers", tags=["customers"])
 async def list_customers(
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user=Depends(require_any_role),
+    company_id: Annotated[int | None, Depends(get_company_scope)] = None,
 ):
-    result = await db.execute(select(Customer).order_by(Customer.name))
+    q = select(Customer).order_by(Customer.name)
+    if company_id is not None:
+        q = q.where(Customer.company_id == company_id)
+    result = await db.execute(q)
     return APIResponse(data=[CustomerRead.model_validate(c) for c in result.scalars().all()])
 
 
@@ -42,8 +47,13 @@ async def create_customer(
     body: CustomerCreate,
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user=Depends(require_entry_or_above),
+    company_id: Annotated[int | None, Depends(get_company_scope)] = None,
 ):
-    customer = Customer(**body.model_dump())
+    resolved_company = body.company_id or company_id
+    if not resolved_company:
+        raise HTTPException(status_code=400, detail="Select an organization first")
+    payload = body.model_dump(exclude={"company_id"})
+    customer = Customer(**payload, company_id=resolved_company)
     db.add(customer)
     await db.flush()
     await write_audit(db, changed_by=current_user.id, entity_type="customer",

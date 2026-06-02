@@ -19,6 +19,7 @@ frontend/dist/
 
 # OS
 .DS_Store
+.git.broken-backup/
 
 # Logs
 *.log

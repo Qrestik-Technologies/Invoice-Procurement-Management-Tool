@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.core.company_scope import get_company_scope
 from app.core.database import get_db
 from app.core.rbac import require_admin, require_any_role, require_entry_or_above
 from app.models.domain import Customer, Invoice
@@ -39,10 +40,13 @@ async def _get_invoice_or_404(db: AsyncSession, invoice_id: int) -> Invoice:
 async def list_invoices(
     db: Annotated[AsyncSession, Depends(get_db)],
     _=Depends(require_any_role),
+    company_id: Annotated[int | None, Depends(get_company_scope)] = None,
     status_filter: Optional[InvoiceStatus] = Query(None, alias="status"),
     customer_id: Optional[int] = Query(None),
 ):
     q = select(Invoice)
+    if company_id is not None:
+        q = q.where(Invoice.company_id == company_id)
     if status_filter:
         q = q.where(Invoice.status == status_filter)
     if customer_id:
@@ -70,18 +74,30 @@ async def create_invoice(
     body: InvoiceCreate,
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user=Depends(require_entry_or_above),
+    company_id: Annotated[int | None, Depends(get_company_scope)] = None,
 ):
-    # Validate customer exists
-    cust = await db.execute(select(Customer).where(Customer.id == body.customer_id))
-    if not cust.scalar_one_or_none():
+    resolved_company = body.company_id or company_id
+    if not resolved_company:
+        raise HTTPException(status_code=400, detail="Select an organization first")
+
+    cust_result = await db.execute(select(Customer).where(Customer.id == body.customer_id))
+    customer = cust_result.scalar_one_or_none()
+    if not customer:
         raise HTTPException(status_code=404, detail="Customer not found")
+    if customer.company_id != resolved_company:
+        raise HTTPException(status_code=400, detail="Customer does not belong to the selected organization")
 
-    # Check invoice_number uniqueness
-    dup = await db.execute(select(Invoice).where(Invoice.invoice_number == body.invoice_number))
+    dup = await db.execute(
+        select(Invoice).where(
+            Invoice.company_id == resolved_company,
+            Invoice.invoice_number == body.invoice_number,
+        )
+    )
     if dup.scalar_one_or_none():
-        raise HTTPException(status_code=400, detail="Invoice number already exists")
+        raise HTTPException(status_code=400, detail="Invoice number already exists for this organization")
 
-    inv = Invoice(**body.model_dump(), uploaded_by=current_user.id)
+    payload = body.model_dump(exclude={"company_id"})
+    inv = Invoice(**payload, company_id=resolved_company, uploaded_by=current_user.id)
     db.add(inv)
     await db.flush()
     await write_audit(db, changed_by=current_user.id, entity_type="invoice",
@@ -152,9 +168,12 @@ async def mark_received(
 async def export_invoices_excel(
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user=Depends(require_any_role),
+    company_id: Annotated[int | None, Depends(get_company_scope)] = None,
     status_filter: Optional[InvoiceStatus] = Query(None, alias="status"),
 ):
     q = select(Invoice).options(selectinload(Invoice.customer))
+    if company_id is not None:
+        q = q.where(Invoice.company_id == company_id)
     if status_filter:
         q = q.where(Invoice.status == status_filter)
     result = await db.execute(q.order_by(Invoice.issue_date.desc()))

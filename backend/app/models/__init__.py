@@ -1,19 +1,24 @@
-from app.models.audit_logs import AuditLog
-from app.models.customers import Customer
-from app.models.documents import Document
-from app.models.invoices import Invoice
-from app.models.milestones import Milestone
-from app.models.payments import Payment
-from app.models.reminder_logs import ReminderLog
+from app.models.domain import (
+    AuditLog,
+    Customer,
+    Document,
+    Invoice,
+    Milestone,
+    Payment,
+    Reminder,
+)
+from app.models.organization import AppSettings, Company
 from app.models.users import User
 
 __all__ = [
     "User",
+    "Company",
+    "AppSettings",
     "Customer",
-    "Milestone",
     "Invoice",
+    "Milestone",
     "Payment",
-    "ReminderLog",
+    "Reminder",
     "Document",
     "AuditLog",
 ]
