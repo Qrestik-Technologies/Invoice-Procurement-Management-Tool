@@ -85,14 +85,15 @@ export default function InvoicesPage() {
       const res = await apiClient.post('/invoices/parse', data, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
-      const f = res.data.fields || res.data.parse_result || res.data;
+      // Response shape: { success, data: InvoiceParseSchema }
+      const f = res.data.data || res.data;
 
       setForm(prev => ({
         ...prev,
         invoice_number: f.invoice_number || prev.invoice_number,
-        amount:         f.total         ? String(f.total) : prev.amount,
-        currency:       f.currency      || prev.currency,
-        issue_date:     f.invoice_date  || prev.issue_date,
+        amount:         f.total          ? String(f.total) : prev.amount,
+        currency:       f.currency       || prev.currency,
+        issue_date:     f.invoice_date   ? String(f.invoice_date) : prev.issue_date,
         description:    f.vendor_name
                           ? `${f.vendor_name}${f.period_start ? ` — ${f.period_start} to ${f.period_end}` : ''}`
                           : prev.description,
@@ -105,7 +106,7 @@ export default function InvoicesPage() {
         bank_iban:      f.bank_iban,
         bank_swift:     f.bank_swift,
         bank_routing:   f.bank_routing,
-        bank_account:   f.bank_account_number,
+        bank_account:   f.bank_account_number,   // schema field is bank_account_number
         bank_name:      f.bank_name,
         bank_fein:      f.bank_fein,
         bank_email:     f.bank_email,
