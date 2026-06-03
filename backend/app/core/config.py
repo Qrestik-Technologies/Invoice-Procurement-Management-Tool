@@ -21,6 +21,9 @@ class Settings(BaseSettings):
     ONEDRIVE_TENANT_ID: str | None = None
     ONEDRIVE_FOLDER: str = "Invoices"
 
+    UPLOAD_DIR: str = "/tmp/invoice_uploads"
+    MAX_UPLOAD_BYTES: int = 20 * 1024 * 1024  # 20 MB
+
     class Config:
         env_file = ".env"
 
