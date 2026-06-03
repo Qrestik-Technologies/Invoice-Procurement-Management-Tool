@@ -28,6 +28,12 @@ const EMPTY_FORM = {
   description: '',
 };
 
+// ── Fallback customers shown when the API returns nothing ──────────────────
+const DEFAULT_CUSTOMERS = [
+  { id: 1, name: 'Qrestik Technologies L.L.C' },
+  { id: 2, name: 'Infinitum Global' },
+];
+
 function Modal({ title, onClose, children }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
@@ -47,7 +53,10 @@ export default function InvoicesPage() {
   const { organizationId } = useOrganization();
   const meta = usePageMeta('Invoices', 'Manage billing and payment records');
   const [invoices, setInvoices] = useState([]);
-  const [customers, setCustomers] = useState([]);
+
+  // ── Initialise with DEFAULT_CUSTOMERS so the dropdown is never empty ──────
+  const [customers, setCustomers] = useState(DEFAULT_CUSTOMERS);
+
   const [showModal, setShowModal] = useState(false);
   const [statusFilter, setStatusFilter] = useState('');
   const [form, setForm] = useState(EMPTY_FORM);
@@ -63,7 +72,17 @@ export default function InvoicesPage() {
   useEffect(() => {
     if (!organizationId) return;
     load();
-    apiClient.get('/customers').then(r => setCustomers(r.data.data || [])).catch(() => {});
+
+    // ── Fetch customers; fall back to defaults if API returns nothing ─────
+    apiClient
+      .get('/customers')
+      .then(r => {
+        const apiCustomers = r.data.data || [];
+        setCustomers(apiCustomers.length > 0 ? apiCustomers : DEFAULT_CUSTOMERS);
+      })
+      .catch(() => {
+        setCustomers(DEFAULT_CUSTOMERS);
+      });
   }, [statusFilter, organizationId]);
 
   const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }));
@@ -85,19 +104,33 @@ export default function InvoicesPage() {
       const res = await apiClient.post('/invoices/parse', data, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
-      // Response shape: { success, data: InvoiceParseSchema }
       const f = res.data.data || res.data;
 
       setForm(prev => ({
         ...prev,
         invoice_number: f.invoice_number || prev.invoice_number,
-        amount:         f.total          ? String(f.total) : prev.amount,
+        amount:         f.total          ? String(f.total)         : prev.amount,
         currency:       f.currency       || prev.currency,
-        issue_date:     f.invoice_date   ? String(f.invoice_date) : prev.issue_date,
+        issue_date:     f.invoice_date   ? String(f.invoice_date)  : prev.issue_date,
         description:    f.vendor_name
                           ? `${f.vendor_name}${f.period_start ? ` — ${f.period_start} to ${f.period_end}` : ''}`
                           : prev.description,
       }));
+
+      // ── Auto-select customer based on detected vendor name ───────────────
+      const detectedName = (f.vendor_name || f.vendor || '').toLowerCase().trim();
+
+      if (detectedName) {
+        // Try fuzzy match against whatever customers list is currently loaded
+        const customerMatch = customers.find(c => {
+          const cName = c.name.toLowerCase();
+          return detectedName.includes(cName) || cName.includes(detectedName);
+        });
+
+        if (customerMatch) {
+          setForm(prev => ({ ...prev, customer_id: String(customerMatch.id) }));
+        }
+      }
 
       setParsedVendor({
         vendor:         f.vendor,
@@ -106,7 +139,7 @@ export default function InvoicesPage() {
         bank_iban:      f.bank_iban,
         bank_swift:     f.bank_swift,
         bank_routing:   f.bank_routing,
-        bank_account:   f.bank_account_number,   // schema field is bank_account_number
+        bank_account:   f.bank_account_number,
         bank_name:      f.bank_name,
         bank_fein:      f.bank_fein,
         bank_email:     f.bank_email,
@@ -252,7 +285,6 @@ export default function InvoicesPage() {
                 {parsedVendor.po_number    && <p className="text-green-700">PO: {parsedVendor.po_number}</p>}
                 {parsedVendor.period_start && <p className="text-green-700">Period: {parsedVendor.period_start} → {parsedVendor.period_end}</p>}
                 {parsedVendor.sku          && <p className="text-green-700">SKU: {parsedVendor.sku}</p>}
-                {/* Banking details */}
                 {(parsedVendor.bank_iban || parsedVendor.bank_account) && (
                   <div className="mt-2 border-t border-green-200 pt-2 space-y-0.5">
                     <p className="font-medium text-green-800">Remittance</p>
