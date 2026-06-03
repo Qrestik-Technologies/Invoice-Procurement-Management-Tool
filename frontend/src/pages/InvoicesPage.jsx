@@ -119,16 +119,17 @@ export default function InvoicesPage() {
           prev.issue_date,
 
         due_date:
-          f.due_date         ||
+          f.due_date ||
           f.payment_due_date ||
-          prev.due_date,
+          f.dueDate ||
+          f.invoice_due_date ||
+          '',
 
         description:
           f.summary ||
           f.description ||
-          (f.vendor_name
-            ? `${f.vendor_name}${f.period_start ? ` — ${f.period_start} to ${f.period_end}` : ''}`
-            : prev.description),
+          f.invoice_summary ||
+          `Invoice from ${f.vendor_name || f.vendor || 'Vendor'}`,
       }));
 
       // ── Auto-select customer based on detected vendor name ───────────────
@@ -171,7 +172,13 @@ export default function InvoicesPage() {
       setForm(EMPTY_FORM);
       load();
     } catch (err) {
-      toast.error(err.response?.data?.detail || 'Failed to create invoice');
+      console.error('CREATE INVOICE ERROR:', err.response?.data);
+
+      toast.error(
+        err.response?.data?.detail ||
+        JSON.stringify(err.response?.data) ||
+        'Failed to create invoice'
+      );
     }
   };
 
