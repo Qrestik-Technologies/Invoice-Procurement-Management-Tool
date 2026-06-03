@@ -301,32 +301,7 @@ export default function InvoicesPage() {
               </label>
             </div>
 
-            {/* ── Parsed vendor summary ── */}
-            {parsedVendor && (
-              <div className="rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-xs space-y-1">
-                <p className="font-medium text-green-800">
-                  ✓ Detected: {parsedVendor.vendor_name || parsedVendor.vendor}
-                </p>
-                {parsedVendor.po_number    && <p className="text-green-700">PO: {parsedVendor.po_number}</p>}
-                {parsedVendor.period_start && <p className="text-green-700">Period: {parsedVendor.period_start} → {parsedVendor.period_end}</p>}
-                {parsedVendor.sku          && <p className="text-green-700">SKU: {parsedVendor.sku}</p>}
-                {(parsedVendor.bank_iban || parsedVendor.bank_account) && (
-                  <div className="mt-2 border-t border-green-200 pt-2 space-y-0.5">
-                    <p className="font-medium text-green-800">Remittance</p>
-                    {parsedVendor.bank_name    && <p className="text-green-700">Bank: {parsedVendor.bank_name}</p>}
-                    {parsedVendor.bank_account && <p className="text-green-700">Account: {parsedVendor.bank_account}</p>}
-                    {parsedVendor.bank_iban    && <p className="text-green-700">IBAN: {parsedVendor.bank_iban}</p>}
-                    {parsedVendor.bank_swift   && <p className="text-green-700">Swift: {parsedVendor.bank_swift}</p>}
-                    {parsedVendor.bank_routing && <p className="text-green-700">Routing: {parsedVendor.bank_routing}</p>}
-                    {parsedVendor.bank_fein    && <p className="text-green-700">FEIN: {parsedVendor.bank_fein}</p>}
-                    {parsedVendor.bank_email   && <p className="text-green-700">Email: {parsedVendor.bank_email}</p>}
-                  </div>
-                )}
-                {parsedVendor.missing?.length > 0 && (
-                  <p className="text-amber-600 mt-1">⚠ Fill manually: {parsedVendor.missing.join(', ')}</p>
-                )}
-              </div>
-            )}
+            {/* Parsed vendor summary intentionally hidden — data still populates the form fields */}
 
             <div className="grid grid-cols-2 gap-4">
               <Input label="Invoice #" value={form.invoice_number} onChange={set('invoice_number')} required placeholder="INV-001" />
