@@ -1,4 +1,4 @@
-"""Payments, reminders, cash flow summary, audit logs, and health check."""
+from calendar import monthrange
 from datetime import date, datetime, timezone
 from decimal import Decimal
 from typing import Annotated, Optional
@@ -26,7 +26,6 @@ from app.schemas import (
 )
 from app.services.audit_service import write_audit
 
-# ── Payments router ───────────────────────────────────────────────────────────
 
 payments_router = APIRouter(prefix="/payments", tags=["payments"])
 
@@ -108,7 +107,6 @@ async def trigger_reminder(
         invoice_id=invoice_id,
         scheduled_at=body.scheduled_at,
         message=body.message,
-        # Mark as sent immediately if scheduled_at is in the past/now
         sent_at=datetime.now(timezone.utc) if body.scheduled_at <= datetime.now(timezone.utc) else None,
     )
     db.add(reminder)
@@ -166,6 +164,57 @@ async def cash_flow_summary(
     ))
 
 
+@cashflow_router.get("/monthly", response_model=APIResponse[list[dict]])
+async def cash_flow_monthly(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _=Depends(require_any_role),
+    company_id: Annotated[int | None, Depends(get_company_scope)] = None,
+    months: int = Query(6, ge=1, le=24),
+    currency: str = Query("USD"),
+):
+    """Return monthly invoiced vs received totals for the last N months."""
+    today = date.today()
+    result_months = []
+
+    for i in range(months - 1, -1, -1):
+        year = today.year
+        month = today.month - i
+        while month <= 0:
+            month += 12
+            year -= 1
+
+        month_start = date(year, month, 1)
+        month_end = date(year, month, monthrange(year, month)[1])
+        label = month_start.strftime("%b %Y")
+
+        inv_q = select(func.coalesce(func.sum(Invoice.total), 0)).where(
+            Invoice.currency == currency,
+            Invoice.invoice_date >= month_start,
+            Invoice.invoice_date <= month_end,
+        )
+        if company_id is not None:
+            inv_q = inv_q.where(Invoice.company_id == company_id)
+
+        pay_q = select(func.coalesce(func.sum(Payment.amount), 0)).where(
+            Payment.received_date >= month_start,
+            Payment.received_date <= month_end,
+        )
+        if company_id is not None:
+            pay_q = pay_q.join(Invoice).where(Invoice.company_id == company_id)
+
+        inv_total = float((await db.execute(inv_q)).scalar() or 0)
+        pay_total = float((await db.execute(pay_q)).scalar() or 0)
+
+        result_months.append({
+            "month": label,
+            "invoiced": inv_total,
+            "received": pay_total,
+            "outstanding": max(inv_total - pay_total, 0),
+        })
+
+    return APIResponse(data=result_months)
+
+
 # ── Audit log router ──────────────────────────────────────────────────────────
 
 audit_router = APIRouter(prefix="/audit-logs", tags=["audit-logs"])
@@ -197,14 +246,12 @@ health_router = APIRouter(prefix="/health", tags=["health"])
 
 @health_router.get("", response_model=HealthStatus)
 async def health_check(db: Annotated[AsyncSession, Depends(get_db)]):
-    # DB
     db_status = "ok"
     try:
         await db.execute(select(func.now()))
     except Exception:
         db_status = "error"
 
-    # Redis
     redis_status = "ok"
     try:
         r = await get_redis()
@@ -212,7 +259,6 @@ async def health_check(db: Annotated[AsyncSession, Depends(get_db)]):
     except Exception:
         redis_status = "error"
 
-    # Celery — best-effort inspect
     celery_status = "not_configured"
     try:
         from celery import current_app as celery_app
