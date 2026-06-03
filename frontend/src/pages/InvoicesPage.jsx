@@ -60,6 +60,14 @@ const generateDescription = (f) => {
   return '';
 };
 
+// ── Calculate due date based on issue date (Net 30 by default) ─────────────
+const calculateDueDate = (issueDate) => {
+  if (!issueDate) return '';
+  const d = new Date(issueDate);
+  d.setDate(d.getDate() + 30);
+  return d.toISOString().split('T')[0];
+};
+
 function Modal({ title, onClose, children }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
@@ -87,7 +95,6 @@ export default function InvoicesPage() {
   const [statusFilter, setStatusFilter] = useState('');
   const [form, setForm] = useState(EMPTY_FORM);
   const [parsing, setParsing] = useState(false);
-  const [parsedVendor, setParsedVendor] = useState(null);
   const fileRef = useRef();
 
   const load = () => {
@@ -111,7 +118,19 @@ export default function InvoicesPage() {
       });
   }, [statusFilter, organizationId]);
 
-  const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }));
+  const set = (k) => (e) => {
+    const newValue = e.target.value;
+    setForm(f => {
+      const updated = { ...f, [k]: newValue };
+      
+      // Auto-calculate due date when issue date changes
+      if (k === 'issue_date' && newValue) {
+        updated.due_date = calculateDueDate(newValue);
+      }
+      
+      return updated;
+    });
+  };
 
   const handlePdfUpload = async (e) => {
     const file = e.target.files[0];
@@ -125,20 +144,16 @@ export default function InvoicesPage() {
     data.append('file', file);
 
     setParsing(true);
-    setParsedVendor(null);
     try {
       const res = await apiClient.post('/invoices/parse', data, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
       const f = res.data.data || res.data;
-      console.log('PARSED PDF:', f); // ← remove once due_date is confirmed working
+      console.log('PARSED PDF:', f);
 
-      // due_date: use backend value, or fall back to Net 30 from invoice_date
-      const computedDueDate = f.due_date
-        ? String(f.due_date)
-        : f.invoice_date
-          ? (() => { const d = new Date(f.invoice_date); d.setDate(d.getDate() + 30); return d.toISOString().split('T')[0]; })()
-          : null;
+      // Calculate due date from parsed issue date (Net 30)
+      const parsedIssueDate = f.invoice_date ? String(f.invoice_date) : null;
+      const computedDueDate = parsedIssueDate ? calculateDueDate(parsedIssueDate) : null;
 
       // Auto-select customer via fuzzy match on vendor name
       const detectedName = (f.vendor_name || f.vendor || '').toLowerCase().trim();
@@ -148,31 +163,14 @@ export default function InvoicesPage() {
 
       setForm(prev => ({
         ...prev,
-        invoice_number: f.invoice_number  || prev.invoice_number,
+        invoice_number: f.invoice_number || prev.invoice_number,
         amount:         f.total           ? String(f.total)        : prev.amount,
         currency:       f.currency        || prev.currency,
-        issue_date:     f.invoice_date    ? String(f.invoice_date) : prev.issue_date,
-        due_date:       computedDueDate   || prev.due_date,
+        issue_date:     parsedIssueDate   || prev.issue_date,
+        due_date:       computedDueDate   || (prev.issue_date ? calculateDueDate(prev.issue_date) : prev.due_date),
         description:    generateDescription(f) || prev.description,
         customer_id:    customerMatch     ? String(customerMatch.id) : prev.customer_id,
       }));
-
-      setParsedVendor({
-        vendor:         f.vendor,
-        vendor_name:    f.vendor_name,
-        po_number:      f.po_number,
-        bank_iban:      f.bank_iban,
-        bank_swift:     f.bank_swift,
-        bank_routing:   f.bank_routing,
-        bank_account:   f.bank_account_number,
-        bank_name:      f.bank_name,
-        bank_fein:      f.bank_fein,
-        bank_email:     f.bank_email,
-        period_start:   f.period_start,
-        period_end:     f.period_end,
-        sku:            f.sku,
-        missing:        f.missing_fields || [],
-      });
 
       toast.success(`${f.vendor_name || 'Invoice'} parsed successfully`);
 
@@ -198,7 +196,6 @@ export default function InvoicesPage() {
       toast.success('Invoice created');
       setShowModal(false);
       setForm(EMPTY_FORM);
-      setParsedVendor(null);
       load();
     } catch (err) {
       toast.error(err.response?.data?.detail || 'Failed to create invoice');
@@ -227,7 +224,7 @@ export default function InvoicesPage() {
               <Download className="h-4 w-4" /> Export
             </Button>
             {canEdit && (
-              <Button size="sm" onClick={() => { setForm(EMPTY_FORM); setParsedVendor(null); setShowModal(true); }}>
+              <Button size="sm" onClick={() => { setForm(EMPTY_FORM); setShowModal(true); }}>
                 <Plus className="h-4 w-4" /> New Invoice
               </Button>
             )}
@@ -254,7 +251,7 @@ export default function InvoicesPage() {
                 {['Invoice #', 'Customer', 'Amount', 'Issue Date', 'Due Date', 'Status'].map(h => (
                   <th key={h} className="px-5 py-3">{h}</th>
                 ))}
-              </tr>
+              </td>
             </thead>
             <tbody>
               {invoices.map(inv => (
@@ -275,7 +272,7 @@ export default function InvoicesPage() {
       </div>
 
       {showModal && (
-        <Modal title="New Invoice" onClose={() => { setShowModal(false); setParsedVendor(null); }}>
+        <Modal title="New Invoice" onClose={() => { setShowModal(false); }}>
           <form onSubmit={handleCreate} className="space-y-4">
 
             {/* ── PDF upload strip ── */}
@@ -301,8 +298,6 @@ export default function InvoicesPage() {
               </label>
             </div>
 
-            {/* Parsed vendor summary intentionally hidden — data still populates the form fields */}
-
             <div className="grid grid-cols-2 gap-4">
               <Input label="Invoice #" value={form.invoice_number} onChange={set('invoice_number')} required placeholder="INV-001" />
               <Select label="Customer" value={form.customer_id} onChange={set('customer_id')} required>
@@ -319,7 +314,7 @@ export default function InvoicesPage() {
             <Input label="Description" value={form.description} onChange={set('description')} placeholder="Optional" />
 
             <div className="flex justify-end gap-3 pt-2">
-              <Button variant="secondary" onClick={() => { setShowModal(false); setParsedVendor(null); }}>Cancel</Button>
+              <Button variant="secondary" onClick={() => { setShowModal(false); }}>Cancel</Button>
               <Button type="submit">Create Invoice</Button>
             </div>
           </form>
