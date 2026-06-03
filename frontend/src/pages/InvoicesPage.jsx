@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
-import { Plus, Download, Upload, Loader2 } from 'lucide-react';
+import { Plus, Download} from 'lucide-react';
 import toast from 'react-hot-toast';
 import apiClient from '../api/client';
 import Button from '../components/ui/Button';
