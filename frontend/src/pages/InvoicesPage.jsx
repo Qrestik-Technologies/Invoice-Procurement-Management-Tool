@@ -34,6 +34,32 @@ const DEFAULT_CUSTOMERS = [
   { id: 2, name: 'Infinitum Global' },
 ];
 
+// ── Build a human-readable description from parsed invoice fields ──────────
+const generateDescription = (f) => {
+  // Prefer a backend-supplied summary if available
+  if (f.summary) return f.summary;
+
+  const parts = [];
+
+  if (f.vendor_name) parts.push(f.vendor_name);
+  if (f.invoice_number) parts.push(`Invoice #${f.invoice_number}`);
+  if (f.po_number) parts.push(`PO ${f.po_number}`);
+  if (f.period_start && f.period_end) parts.push(`Period ${f.period_start} - ${f.period_end}`);
+  if (f.total) parts.push(`${f.total} ${f.currency || ''}`.trim());
+
+  if (parts.length > 0) return parts.join(' • ');
+
+  // Friendly fallback sentences
+  if (f.period_start && f.period_end)
+    return `${f.vendor_name} services from ${f.period_start} to ${f.period_end}`;
+  if (f.po_number)
+    return `Invoice for procurement/services under PO ${f.po_number}`;
+  if (f.vendor_name)
+    return `${f.vendor_name} invoice`;
+
+  return '';
+};
+
 function Modal({ title, onClose, children }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
@@ -112,9 +138,7 @@ export default function InvoicesPage() {
         amount:         f.total          ? String(f.total)         : prev.amount,
         currency:       f.currency       || prev.currency,
         issue_date:     f.invoice_date   ? String(f.invoice_date)  : prev.issue_date,
-        description:    f.vendor_name
-                          ? `${f.vendor_name}${f.period_start ? ` — ${f.period_start} to ${f.period_end}` : ''}`
-                          : prev.description,
+        description:    generateDescription(f) || prev.description,
       }));
 
       // ── Auto-select customer based on detected vendor name ───────────────
