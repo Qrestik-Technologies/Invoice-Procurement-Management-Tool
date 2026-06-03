@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { Eye, EyeOff } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Button from '../components/ui/Button';
@@ -43,14 +43,6 @@ export default function LoginPage() {
     <AuthShell
       title="Welcome back"
       subtitle="Sign in to manage invoices, milestones, and payments"
-      footer={
-        <>
-          Don&apos;t have an account?{' '}
-          <Link to="/register" className="font-medium text-primary">
-            Create one
-          </Link>
-        </>
-      }
     >
       <form onSubmit={handleSubmit} className="space-y-5">
         <Input
