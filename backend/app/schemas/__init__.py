@@ -329,3 +329,51 @@ class HealthStatus(BaseModel):
     database: str
     redis: str
     celery: str
+
+class LineItemSchema(BaseModel):
+    description: str
+    qty: float = 1
+    rate: float = 0
+    amount: float = 0
+
+
+class InvoiceParseSchema(BaseModel):
+    invoice_number: str | None = None
+    invoice_date: date | None = None
+    po_number: str | None = None
+    customer_name: str | None = None
+    bill_to_address: str | None = None
+    ship_to_address: str | None = None
+    subtotal: float | None = None
+    tax: float | None = None
+    total: float | None = None
+    currency: str | None = "USD"
+    line_items: list[LineItemSchema] = Field(default_factory=list)
+    missing_fields: list[str] = Field(default_factory=list)
+    raw_text_length: int = 0
+
+    vendor: str | None = None
+    vendor_name: str | None = None
+
+    bank_account_number: str | None = None
+    bank_routing: str | None = None
+    bank_address: str | None = None
+
+    bank_iban: str | None = None
+    bank_swift: str | None = None
+    bank_branch: str | None = None
+    bill_to_po_box: str | None = None
+
+    bank_name: str | None = None
+    bank_fein: str | None = None
+    bank_email: str | None = None
+    ship_to_contact: str | None = None
+    ship_to_company: str | None = None
+    sku: str | None = None
+    period_start: str | None = None
+    period_end: str | None = None
+
+
+class ParseUploadResponse(BaseModel):
+    document_id: int
+    parse_result: InvoiceParseSchema
