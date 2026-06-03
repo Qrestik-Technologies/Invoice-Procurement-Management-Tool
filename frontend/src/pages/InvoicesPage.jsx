@@ -36,11 +36,9 @@ const DEFAULT_CUSTOMERS = [
 
 // ── Build a human-readable description from parsed invoice fields ──────────
 const generateDescription = (f) => {
-  // Prefer a backend-supplied summary if available
   if (f.summary) return f.summary;
 
   const parts = [];
-
   if (f.vendor_name) parts.push(f.vendor_name);
   if (f.invoice_number) parts.push(`Invoice #${f.invoice_number}`);
   if (f.po_number) parts.push(`PO ${f.po_number}`);
@@ -48,15 +46,12 @@ const generateDescription = (f) => {
   if (f.total) parts.push(`${f.total} ${f.currency || ''}`.trim());
 
   if (parts.length > 0) return parts.join(' • ');
-
-  // Friendly fallback sentences
   if (f.period_start && f.period_end)
     return `${f.vendor_name} services from ${f.period_start} to ${f.period_end}`;
   if (f.po_number)
     return `Invoice for procurement/services under PO ${f.po_number}`;
   if (f.vendor_name)
     return `${f.vendor_name} invoice`;
-
   return '';
 };
 
@@ -87,10 +82,7 @@ export default function InvoicesPage() {
   const { organizationId } = useOrganization();
   const meta = usePageMeta('Invoices', 'Manage billing and payment records');
   const [invoices, setInvoices] = useState([]);
-
-  // ── Initialise with DEFAULT_CUSTOMERS so the dropdown is never empty ──────
   const [customers, setCustomers] = useState(DEFAULT_CUSTOMERS);
-
   const [showModal, setShowModal] = useState(false);
   const [statusFilter, setStatusFilter] = useState('');
   const [form, setForm] = useState(EMPTY_FORM);
@@ -105,8 +97,6 @@ export default function InvoicesPage() {
   useEffect(() => {
     if (!organizationId) return;
     load();
-
-    // ── Fetch customers; fall back to defaults if API returns nothing ─────
     apiClient
       .get('/customers')
       .then(r => {
@@ -122,12 +112,9 @@ export default function InvoicesPage() {
     const newValue = e.target.value;
     setForm(f => {
       const updated = { ...f, [k]: newValue };
-      
-      // Auto-calculate due date when issue date changes
       if (k === 'issue_date' && newValue) {
         updated.due_date = calculateDueDate(newValue);
       }
-      
       return updated;
     });
   };
@@ -149,13 +136,10 @@ export default function InvoicesPage() {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
       const f = res.data.data || res.data;
-      console.log('PARSED PDF:', f);
 
-      // Calculate due date from parsed issue date (Net 30)
       const parsedIssueDate = f.invoice_date ? String(f.invoice_date) : null;
       const computedDueDate = parsedIssueDate ? calculateDueDate(parsedIssueDate) : null;
 
-      // Auto-select customer via fuzzy match on vendor name
       const detectedName = (f.vendor_name || f.vendor || '').toLowerCase().trim();
       const customerMatch = detectedName
         ? customers.find(c => { const n = c.name.toLowerCase(); return detectedName.includes(n) || n.includes(detectedName); })
@@ -164,19 +148,15 @@ export default function InvoicesPage() {
       setForm(prev => ({
         ...prev,
         invoice_number: f.invoice_number || prev.invoice_number,
-        amount:         f.total           ? String(f.total)        : prev.amount,
-        currency:       f.currency        || prev.currency,
-        issue_date:     parsedIssueDate   || prev.issue_date,
-        due_date:       computedDueDate   || (prev.issue_date ? calculateDueDate(prev.issue_date) : prev.due_date),
-        description:    generateDescription(f) || prev.description,
-        customer_id:    customerMatch     ? String(customerMatch.id) : prev.customer_id,
+        amount: f.total ? String(f.total) : prev.amount,
+        currency: f.currency || prev.currency,
+        issue_date: parsedIssueDate || prev.issue_date,
+        due_date: computedDueDate || (prev.issue_date ? calculateDueDate(prev.issue_date) : prev.due_date),
+        description: generateDescription(f) || prev.description,
+        customer_id: customerMatch ? String(customerMatch.id) : prev.customer_id,
       }));
 
-      toast.success(`${f.vendor_name || 'Invoice'} parsed successfully`);
-
-      if (f.missing_fields?.length) {
-        toast(`Please fill in: ${f.missing_fields.join(', ')}`, { icon: '⚠️' });
-      }
+      toast.success('Invoice data filled from PDF');
     } catch (err) {
       toast.error(err.response?.data?.detail || 'Could not parse PDF');
     } finally {
@@ -274,7 +254,7 @@ export default function InvoicesPage() {
       {showModal && (
         <Modal title="New Invoice" onClose={() => { setShowModal(false); }}>
           <form onSubmit={handleCreate} className="space-y-4">
-            {/* ── PDF upload strip ── */}
+            {/* Simple PDF upload - NO DETECTED BOX */}
             <div className="flex items-center gap-3 rounded-lg border border-dashed border-border bg-gray-50 px-4 py-3">
               <Upload className="h-4 w-4 shrink-0 text-[#9CA3AF]" />
               <span className="text-xs text-[#6B7280]">Auto-fill from PDF</span>
