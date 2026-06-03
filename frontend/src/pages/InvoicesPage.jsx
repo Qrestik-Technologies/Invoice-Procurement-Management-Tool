@@ -255,29 +255,7 @@ export default function InvoicesPage() {
         <Modal title="New Invoice" onClose={() => setShowModal(false)}>
           <form onSubmit={handleCreate} className="space-y-4">
 
-            {/* ── PDF upload strip ── */}
-            <div className="flex items-center gap-3 rounded-lg border border-dashed border-border bg-gray-50 px-4 py-3">
-              <Upload className="h-4 w-4 shrink-0 text-[#9CA3AF]" />
-              <span className="text-xs text-[#6B7280]">Auto-fill from PDF</span>
-              <label className="ml-auto cursor-pointer">
-                <span className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-white hover:bg-primary/90 transition-colors">
-                  {parsing ? (
-                    <span className="flex items-center gap-1.5">
-                      <Loader2 className="h-3 w-3 animate-spin" /> Parsing…
-                    </span>
-                  ) : 'Upload PDF'}
-                </span>
-                <input
-                  ref={fileRef}
-                  type="file"
-                  accept=".pdf"
-                  className="hidden"
-                  onChange={handlePdfUpload}
-                  disabled={parsing}
-                />
-              </label>
-            </div>
-
+      
             {/* Parsed vendor summary removed */}
 
             <div className="grid grid-cols-2 gap-4">
