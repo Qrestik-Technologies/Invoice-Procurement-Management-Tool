@@ -1,14 +1,3 @@
-/**
- * CashFlowPage.jsx — fully wired to the real API
- *
- * API endpoints used:
- *   GET /api/v1/cash-flow/summary?start=&end=&currency=
- *   GET /api/v1/cash-flow/monthly?months=6&currency=
- *
- * Both are scoped by X-Company-Id header (set by apiClient interceptor).
- * Uses: Recharts, lucide-react, Tailwind CSS — already in your stack.
- */
-
 import { useState, useEffect, useCallback } from "react";
 import {
   AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
