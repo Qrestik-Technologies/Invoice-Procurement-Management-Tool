@@ -251,7 +251,7 @@ export default function InvoicesPage() {
                 {['Invoice #', 'Customer', 'Amount', 'Issue Date', 'Due Date', 'Status'].map(h => (
                   <th key={h} className="px-5 py-3">{h}</th>
                 ))}
-              </td>
+               </tr>
             </thead>
             <tbody>
               {invoices.map(inv => (
@@ -274,7 +274,6 @@ export default function InvoicesPage() {
       {showModal && (
         <Modal title="New Invoice" onClose={() => { setShowModal(false); }}>
           <form onSubmit={handleCreate} className="space-y-4">
-
             {/* ── PDF upload strip ── */}
             <div className="flex items-center gap-3 rounded-lg border border-dashed border-border bg-gray-50 px-4 py-3">
               <Upload className="h-4 w-4 shrink-0 text-[#9CA3AF]" />
