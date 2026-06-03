@@ -1,8 +1,10 @@
-"""Invoice CRUD, dispatch, mark-received, Excel export, and OneDrive sync."""
+"""Invoice CRUD, dispatch, mark-received, Excel export, OneDrive sync, and PDF parse."""
+import uuid
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Annotated, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import Response
 from sqlalchemy import select
@@ -10,16 +12,28 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.company_scope import get_company_scope
+from app.core.config import settings
 from app.core.database import get_db
 from app.core.rbac import require_admin, require_any_role, require_entry_or_above
 from app.models.domain import Customer, Invoice
 from app.models.enums import AuditAction, InvoiceStatus
-from app.schemas import APIResponse, InvoiceCreate, InvoiceRead, InvoiceUpdate
+from app.parsers.invoice_parser import parse_invoice
+from app.schemas import APIResponse, InvoiceCreate, InvoiceParseSchema, InvoiceRead, InvoiceUpdate
 from app.services.audit_service import write_audit
 from app.services.excel_service import export_invoices_to_excel
 from app.services.onedrive_service import upload_file_to_onedrive
 
 router = APIRouter(prefix="/invoices", tags=["invoices"])
+
+UPLOAD_DIR = Path(settings.UPLOAD_DIR)
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
+_ALLOWED_EXTENSIONS = {".pdf", ".docx", ".doc"}
+_ALLOWED_MIME = {
+    "application/pdf",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/msword",
+}
 
 
 async def _get_invoice_or_404(db: AsyncSession, invoice_id: int) -> Invoice:
@@ -218,3 +232,39 @@ async def sync_to_onedrive(
         return APIResponse(data=InvoiceRead.model_validate(inv), message="Synced to OneDrive")
     else:
         raise HTTPException(status_code=502, detail="OneDrive upload failed. Check server logs.")
+
+
+# ── Parse invoice PDF ─────────────────────────────────────────────────────────
+
+@router.post("/parse", response_model=APIResponse[InvoiceParseSchema])
+async def parse_invoice_file(
+    _=Depends(require_entry_or_above),
+    file: UploadFile = File(...),
+):
+    """Upload a PDF/DOCX invoice and extract fields via regex + NLP."""
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="Filename required")
+    ext = Path(file.filename).suffix.lower()
+    if ext not in _ALLOWED_EXTENSIONS:
+        raise HTTPException(status_code=400, detail="Only PDF and DOCX files are supported")
+    if file.content_type and file.content_type not in _ALLOWED_MIME:
+        raise HTTPException(status_code=400, detail="Unsupported file type")
+
+    content = await file.read()
+    if len(content) > settings.MAX_UPLOAD_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"File exceeds maximum size of {settings.MAX_UPLOAD_BYTES // (1024 * 1024)} MB",
+        )
+
+    # Save to a temp file so the parser can open it
+    safe_name = f"{uuid.uuid4().hex}{ext}"
+    dest = UPLOAD_DIR / safe_name
+    dest.write_bytes(content)
+
+    try:
+        result = parse_invoice(str(dest))
+    finally:
+        dest.unlink(missing_ok=True)  # clean up temp file
+
+    return APIResponse(data=result)
