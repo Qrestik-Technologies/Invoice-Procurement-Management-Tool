@@ -34,35 +34,6 @@ const DEFAULT_CUSTOMERS = [
   { id: 2, name: 'Infinitum Global' },
 ];
 
-// ── Build a human-readable description from parsed invoice fields ──────────
-const generateDescription = (f) => {
-  if (f.summary) return f.summary;
-
-  const parts = [];
-  if (f.vendor_name) parts.push(f.vendor_name);
-  if (f.invoice_number) parts.push(`Invoice #${f.invoice_number}`);
-  if (f.po_number) parts.push(`PO ${f.po_number}`);
-  if (f.period_start && f.period_end) parts.push(`Period ${f.period_start} - ${f.period_end}`);
-  if (f.total) parts.push(`${f.total} ${f.currency || ''}`.trim());
-
-  if (parts.length > 0) return parts.join(' • ');
-  if (f.period_start && f.period_end)
-    return `${f.vendor_name} services from ${f.period_start} to ${f.period_end}`;
-  if (f.po_number)
-    return `Invoice for procurement/services under PO ${f.po_number}`;
-  if (f.vendor_name)
-    return `${f.vendor_name} invoice`;
-  return '';
-};
-
-// ── Calculate due date based on issue date (Net 30 by default) ─────────────
-const calculateDueDate = (issueDate) => {
-  if (!issueDate) return '';
-  const d = new Date(issueDate);
-  d.setDate(d.getDate() + 30);
-  return d.toISOString().split('T')[0];
-};
-
 function Modal({ title, onClose, children }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
@@ -82,7 +53,10 @@ export default function InvoicesPage() {
   const { organizationId } = useOrganization();
   const meta = usePageMeta('Invoices', 'Manage billing and payment records');
   const [invoices, setInvoices] = useState([]);
+
+  // ── Initialise with DEFAULT_CUSTOMERS so the dropdown is never empty ──────
   const [customers, setCustomers] = useState(DEFAULT_CUSTOMERS);
+
   const [showModal, setShowModal] = useState(false);
   const [statusFilter, setStatusFilter] = useState('');
   const [form, setForm] = useState(EMPTY_FORM);
@@ -97,6 +71,8 @@ export default function InvoicesPage() {
   useEffect(() => {
     if (!organizationId) return;
     load();
+
+    // ── Fetch customers; fall back to defaults if API returns nothing ─────
     apiClient
       .get('/customers')
       .then(r => {
@@ -108,16 +84,7 @@ export default function InvoicesPage() {
       });
   }, [statusFilter, organizationId]);
 
-  const set = (k) => (e) => {
-    const newValue = e.target.value;
-    setForm(f => {
-      const updated = { ...f, [k]: newValue };
-      if (k === 'issue_date' && newValue) {
-        updated.due_date = calculateDueDate(newValue);
-      }
-      return updated;
-    });
-  };
+  const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }));
 
   const handlePdfUpload = async (e) => {
     const file = e.target.files[0];
@@ -137,26 +104,52 @@ export default function InvoicesPage() {
       });
       const f = res.data.data || res.data;
 
-      const parsedIssueDate = f.invoice_date ? String(f.invoice_date) : null;
-      const computedDueDate = parsedIssueDate ? calculateDueDate(parsedIssueDate) : null;
-
-      const detectedName = (f.vendor_name || f.vendor || '').toLowerCase().trim();
-      const customerMatch = detectedName
-        ? customers.find(c => { const n = c.name.toLowerCase(); return detectedName.includes(n) || n.includes(detectedName); })
-        : null;
+      // ── DEBUG: inspect every field the backend returns ─────────────────
+      console.log('PARSED INVOICE:', f);
 
       setForm(prev => ({
         ...prev,
         invoice_number: f.invoice_number || prev.invoice_number,
-        amount: f.total ? String(f.total) : prev.amount,
-        currency: f.currency || prev.currency,
-        issue_date: parsedIssueDate || prev.issue_date,
-        due_date: computedDueDate || (prev.issue_date ? calculateDueDate(prev.issue_date) : prev.due_date),
-        description: generateDescription(f) || prev.description,
-        customer_id: customerMatch ? String(customerMatch.id) : prev.customer_id,
+        amount:         f.total          ? String(f.total)        : prev.amount,
+        currency:       f.currency       || prev.currency,
+
+        issue_date:
+          f.invoice_date ||
+          f.issue_date   ||
+          prev.issue_date,
+
+        due_date:
+          f.due_date         ||
+          f.payment_due_date ||
+          prev.due_date,
+
+        description:
+          f.summary ||
+          f.description ||
+          (f.vendor_name
+            ? `${f.vendor_name}${f.period_start ? ` — ${f.period_start} to ${f.period_end}` : ''}`
+            : prev.description),
       }));
 
-      toast.success('Invoice data filled from PDF');
+      // ── Auto-select customer based on detected vendor name ───────────────
+      const detectedName = (f.vendor_name || f.vendor || '').toLowerCase().trim();
+
+      if (detectedName) {
+        const customerMatch = customers.find(c => {
+          const cName = c.name.toLowerCase();
+          return detectedName.includes(cName) || cName.includes(detectedName);
+        });
+
+        if (customerMatch) {
+          setForm(prev => ({ ...prev, customer_id: String(customerMatch.id) }));
+        }
+      }
+
+      toast.success(`${f.vendor_name || 'Invoice'} parsed successfully`);
+
+      if (f.missing_fields?.length) {
+        toast(`Please fill in: ${f.missing_fields.join(', ')}`, { icon: '⚠️' });
+      }
     } catch (err) {
       toast.error(err.response?.data?.detail || 'Could not parse PDF');
     } finally {
@@ -231,7 +224,7 @@ export default function InvoicesPage() {
                 {['Invoice #', 'Customer', 'Amount', 'Issue Date', 'Due Date', 'Status'].map(h => (
                   <th key={h} className="px-5 py-3">{h}</th>
                 ))}
-               </tr>
+              </tr>
             </thead>
             <tbody>
               {invoices.map(inv => (
@@ -252,9 +245,10 @@ export default function InvoicesPage() {
       </div>
 
       {showModal && (
-        <Modal title="New Invoice" onClose={() => { setShowModal(false); }}>
+        <Modal title="New Invoice" onClose={() => setShowModal(false)}>
           <form onSubmit={handleCreate} className="space-y-4">
-            {/* Simple PDF upload - NO DETECTED BOX */}
+
+            {/* ── PDF upload strip ── */}
             <div className="flex items-center gap-3 rounded-lg border border-dashed border-border bg-gray-50 px-4 py-3">
               <Upload className="h-4 w-4 shrink-0 text-[#9CA3AF]" />
               <span className="text-xs text-[#6B7280]">Auto-fill from PDF</span>
@@ -277,6 +271,8 @@ export default function InvoicesPage() {
               </label>
             </div>
 
+            {/* Parsed vendor summary removed */}
+
             <div className="grid grid-cols-2 gap-4">
               <Input label="Invoice #" value={form.invoice_number} onChange={set('invoice_number')} required placeholder="INV-001" />
               <Select label="Customer" value={form.customer_id} onChange={set('customer_id')} required>
@@ -293,7 +289,7 @@ export default function InvoicesPage() {
             <Input label="Description" value={form.description} onChange={set('description')} placeholder="Optional" />
 
             <div className="flex justify-end gap-3 pt-2">
-              <Button variant="secondary" onClick={() => { setShowModal(false); }}>Cancel</Button>
+              <Button variant="secondary" onClick={() => setShowModal(false)}>Cancel</Button>
               <Button type="submit">Create Invoice</Button>
             </div>
           </form>
