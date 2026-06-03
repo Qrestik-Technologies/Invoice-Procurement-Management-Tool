@@ -1,9 +1,12 @@
 import logging
+import re
+import shutil
+import uuid
 from datetime import date
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from fastapi.responses import FileResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,7 +18,14 @@ from app.models.enums import InvoiceStatus, UserRole
 from app.models.invoices import Invoice
 from app.models.payments import Payment
 from app.models.users import User
-from app.schemas import APIResponse, InvoiceCreate, InvoiceRead, InvoiceUpdate, MarkReceivedRequest
+from app.schemas import (
+    APIResponse,
+    InvoiceCreate,
+    InvoiceRead,
+    InvoiceUpdate,
+    MarkReceivedRequest,
+    ParseUploadResponse,
+)
 from app.services.audit_service import write_audit_log
 from app.services.invoice_helpers import model_to_dict, next_invoice_number, serialize_invoice
 from app.services.pagination import paginate
@@ -70,6 +80,56 @@ async def list_invoices(
     )
 
 
+# ── NEW: parse-upload must be BEFORE /{invoice_id} to avoid route collision ──
+
+@router.post("/parse-upload", response_model=APIResponse[ParseUploadResponse])
+async def parse_upload(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current: Annotated[User, Depends(require_roles(UserRole.admin, UserRole.entry))],
+    file: UploadFile = File(...),
+):
+    """
+    Upload a PDF or DOCX invoice for intelligent parsing.
+    Auto-detects vendor (Qrestik / Infinitum / generic) and returns
+    all extracted fields ready for front-end auto-fill.
+    """
+    ext = Path(file.filename).suffix.lower()
+    if ext not in {".pdf", ".docx", ".doc"}:
+        raise HTTPException(
+            status_code=400,
+            detail="Only PDF or Word documents (.pdf, .docx, .doc) are accepted",
+        )
+
+    upload_dir = Path("uploads/parse_temp")
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    tmp_path = upload_dir / f"{uuid.uuid4().hex}{ext}"
+
+    try:
+        with tmp_path.open("wb") as buf:
+            shutil.copyfileobj(file.file, buf)
+
+        from app.parser.invoice_parser import parse_invoice
+        parse_result = parse_invoice(str(tmp_path))
+    finally:
+        tmp_path.unlink(missing_ok=True)
+
+    await write_audit_log(
+        db,
+        table_name="invoices",
+        record_id=0,
+        action="parse_upload",
+        changed_by=current.id,
+        new_value={
+            "filename": file.filename,
+            "vendor": parse_result.vendor,
+            "invoice_number": parse_result.invoice_number,
+        },
+    )
+    await db.commit()
+
+    return APIResponse(data=ParseUploadResponse(document_id=0, parse_result=parse_result))
+
+
 @router.get("/{invoice_id}", response_model=APIResponse[InvoiceRead])
 async def get_invoice(
     invoice_id: int,
@@ -103,6 +163,50 @@ async def download_invoice_pdf(
         inv.file_path,
         media_type="application/pdf",
         filename=f"{inv.invoice_number}.pdf",
+    )
+
+
+# ── NEW: attach an uploaded PDF to an existing invoice record ────────────────
+
+@router.post("/{invoice_id}/upload-pdf", response_model=APIResponse[InvoiceRead])
+async def upload_invoice_pdf(
+    invoice_id: int,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current: Annotated[User, Depends(require_roles(UserRole.admin, UserRole.entry))],
+    file: UploadFile = File(...),
+):
+    """Attach an externally-created PDF to an existing invoice record."""
+    inv = await _load_invoice(db, invoice_id)
+    if inv is None:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    if file.content_type not in ("application/pdf", "application/octet-stream"):
+        raise HTTPException(status_code=400, detail="Only PDF files are accepted")
+
+    upload_dir = Path("uploads/invoices")
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    safe_number = re.sub(r"[^A-Za-z0-9_\-]", "_", inv.invoice_number or str(invoice_id))
+    dest = upload_dir / f"{safe_number}_{uuid.uuid4().hex[:8]}.pdf"
+
+    with dest.open("wb") as buf:
+        shutil.copyfileobj(file.file, buf)
+
+    inv.file_path = str(dest)
+    await write_audit_log(
+        db,
+        table_name="invoices",
+        record_id=inv.id,
+        action="upload_pdf",
+        changed_by=current.id,
+        new_value={"file_path": str(dest)},
+    )
+    await db.commit()
+    inv = await _load_invoice(db, invoice_id)
+    return APIResponse(
+        data=serialize_invoice(
+            inv,
+            inv.customer.name if inv.customer else None,
+            inv.milestone.project_name if inv.milestone else None,
+        )
     )
 
 
