@@ -181,6 +181,201 @@ def _extract_line_items(path: str, text: str) -> list[LineItemSchema]:
     return items
 
 
+# ---------------------------------------------------------------------------
+# NEW: Vendor detection
+# ---------------------------------------------------------------------------
+
+def _detect_vendor(text: str) -> str:
+    """Return 'qrestik', 'infinitum', or 'generic' based on PDF text content."""
+    t = text.lower()
+    if any(k in t for k in ["qrestik", "hor al anz", "nrakaeak", "rakbank"]):
+        return "qrestik"
+    if any(k in t for k in ["infinitum global", "infinitumglobal.org", "jp morgan chase"]):
+        return "infinitum"
+    return "generic"
+
+
+# ---------------------------------------------------------------------------
+# NEW: Qrestik-specific extraction
+# ---------------------------------------------------------------------------
+
+def _extract_qrestik(text: str) -> dict:
+    """
+    Extract fields specific to Qrestik invoices (AED currency, RAKBANK remittance).
+    Returns a dict that gets merged into the main result.
+    """
+    data: dict = {}
+
+    # Invoice number — Qrestik format: "Invoice number : 0069"
+    m = re.search(r"Invoice\s+number\s*[:\-]\s*(\d+)", text, re.I)
+    if m:
+        data["invoice_number"] = m.group(1).strip()
+
+    # Date — Qrestik format: "Date : 13/03/2026"
+    m = re.search(r"Date\s*[:\-]\s*(\d{1,2}/\d{1,2}/\d{4})", text, re.I)
+    if m:
+        raw = m.group(1)
+        for fmt in ("%d/%m/%Y", "%m/%d/%Y"):
+            try:
+                data["invoice_date"] = datetime.strptime(raw, fmt).date()
+                break
+            except ValueError:
+                continue
+
+    # Currency and total — "AED 7,345"
+    data["currency"] = "AED"
+    m = re.search(r"AED\s+([\d,]+(?:\.\d+)?)", text)
+    if m:
+        data["total"] = float(m.group(1).replace(",", ""))
+
+    # Vendor name
+    data["vendor_name"] = "Qrestik Technologies L.L.C"
+
+    # Bill-to customer
+    m = re.search(r"Bill to[:\s]*\n\s*(.+?)(?:\n|,)", text, re.I)
+    if m:
+        data["customer_name"] = m.group(1).strip()
+
+    # Bill-to PO Box
+    m = re.search(r"PO\s*Box\s+(\d+)", text, re.I)
+    if m:
+        data["bill_to_po_box"] = m.group(1)
+
+    # Remittance / banking fields
+    m = re.search(r"Account Number\s*[–\-:]\s*([\d]+)", text)
+    if m:
+        data["bank_account_number"] = m.group(1)
+
+    m = re.search(r"IBAN Number\s*[–\-:]\s*([A-Z0-9]+)", text)
+    if m:
+        data["bank_iban"] = m.group(1)
+
+    m = re.search(r"Branch Name\s*[–\-:]\s*(.+)", text)
+    if m:
+        data["bank_branch"] = m.group(1).strip()
+
+    m = re.search(r"Swift Code\s*[–\-:]\s*([A-Z0-9]+)", text)
+    if m:
+        data["bank_swift"] = m.group(1)
+
+    m = re.search(r"Routing Code\s*[–\-:]\s*([0-9]+)", text)
+    if m:
+        data["bank_routing"] = m.group(1)
+
+    m = re.search(r"Address\s*[–\-:]\s*(.+)", text)
+    if m:
+        data["bank_address"] = m.group(1).strip()
+
+    return data
+
+
+# ---------------------------------------------------------------------------
+# NEW: Infinitum-specific extraction
+# ---------------------------------------------------------------------------
+
+def _extract_infinitum(text: str) -> dict:
+    """
+    Extract fields specific to Infinitum Global invoices (USD, JP Morgan remittance,
+    ship-to contact, PO number, SKU, billing period).
+    Returns a dict that gets merged into the main result.
+    """
+    data: dict = {}
+
+    # Invoice number — "INVOICE#: 3611"
+    m = re.search(r"INVOICE\s*#\s*[:\-]?\s*(\d+)", text, re.I)
+    if m:
+        data["invoice_number"] = m.group(1).strip()
+
+    # Date — "DATE: 01st June 2026"
+    m = re.search(r"DATE\s*[:\-]\s*(.+?)(?:\n|INVOICE)", text, re.I | re.S)
+    if m:
+        raw = m.group(1).strip()
+        # Strip ordinal suffixes: 1st → 1, 2nd → 2, etc.
+        raw_clean = re.sub(r"(\d+)(?:st|nd|rd|th)", r"\1", raw)
+        for fmt in ("%d %B %Y", "%d %b %Y"):
+            try:
+                data["invoice_date"] = datetime.strptime(raw_clean.strip(), fmt).date()
+                break
+            except ValueError:
+                continue
+
+    # Currency and total
+    data["currency"] = "USD"
+    m = re.search(r"Total\s+\$\s*([\d,]+(?:\.\d+)?)", text, re.I)
+    if m:
+        data["total"] = float(m.group(1).replace(",", ""))
+
+    # Vendor name
+    data["vendor_name"] = "Infinitum Global LLC"
+
+    # Bill-to company (first line after "Bill To:")
+    m = re.search(r"Bill To[:\s]*\n\s*(.+?)(?:\n)", text, re.I)
+    if m:
+        data["customer_name"] = m.group(1).strip()
+
+    # Ship-to contact name (first line after "Ship To:")
+    m = re.search(r"Ship To[:\s]*\n\s*(.+?)(?:\n)", text, re.I)
+    if m:
+        data["ship_to_contact"] = m.group(1).strip()
+
+    # Ship-to company (second line after "Ship To:")
+    m = re.search(r"Ship To[:\s]*\n\s*.+?\n\s*(.+?)(?:\n)", text, re.I)
+    if m:
+        data["ship_to_company"] = m.group(1).strip()
+
+    # PO number — "#PO018558"
+    m = re.search(r"#\s*(PO\d+)", text, re.I)
+    if m:
+        data["po_number"] = m.group(1)
+
+    # SKU / Code
+    m = re.search(r"\b(\d{6}-\d+)\b", text)
+    if m:
+        data["sku"] = m.group(1)
+
+    # Billing period — "1st May 2026 to 31st May 2026"
+    m = re.search(
+        r"(\d+\w*\s+\w+\s+\d{4})\s+to\s+(\d+\w*\s+\w+\s+\d{4})",
+        text, re.I
+    )
+    if m:
+        data["period_start"] = m.group(1).strip()
+        data["period_end"] = m.group(2).strip()
+
+    # Remittance / banking
+    m = re.search(r"Bank Name[:\s]+(.+)", text)
+    if m:
+        data["bank_name"] = m.group(1).strip()
+
+    m = re.search(r"Account[:\s]+([\d]+)", text)
+    if m:
+        data["bank_account_number"] = m.group(1)
+
+    m = re.search(r"Routing\s*#[:\s]+([\d]+)", text)
+    if m:
+        data["bank_routing"] = m.group(1)
+
+    m = re.search(
+        r"Federal Employee Identification Number\s*\(FEIN\)[:\s]+([\d\-]+)", text
+    )
+    if m:
+        data["bank_fein"] = m.group(1)
+
+    m = re.search(r"Address Associated w/\s*Account[:\s]+(.+)", text)
+    if m:
+        data["bank_address"] = m.group(1).strip()
+
+    m = re.search(r"Email Associated w/\s*Account[:\s]+(\S+@\S+)", text)
+    if m:
+        data["bank_email"] = m.group(1)
+
+    return data
+
+
+# ---------------------------------------------------------------------------
+# Existing parse_invoice — extended with vendor-specific enrichment
+# ---------------------------------------------------------------------------
+
 def parse_invoice(file_path: str) -> InvoiceParseSchema:
     path = Path(file_path)
     if not path.exists():
@@ -200,6 +395,14 @@ def parse_invoice(file_path: str) -> InvoiceParseSchema:
     merged["bill_to_address"] = _extract_address_block(text, "Bill To")
     merged["ship_to_address"] = _extract_address_block(text, "Ship To")
     merged["line_items"] = _extract_line_items(file_path, text)
+
+    vendor = _detect_vendor(text)
+    if vendor == "qrestik":
+        merged.update(_extract_qrestik(text))
+        merged["vendor"] = "qrestik"
+    elif vendor == "infinitum":
+        merged.update(_extract_infinitum(text))
+        merged["vendor"] = "infinitum"
 
     result = InvoiceParseSchema(
         raw_text_length=len(text),
