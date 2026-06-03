@@ -1,38 +1,39 @@
+from __future__ import annotations
 import re
+import logging
 from datetime import datetime
 from pathlib import Path
+from typing import Optional
 
 from app.schemas import InvoiceParseSchema, LineItemSchema
 
+logger = logging.getLogger(__name__)
+
 REQUIRED_FIELDS = ["invoice_number", "invoice_date", "total", "customer_name"]
 
-_nlp = None
+# ---------------------------------------------------------------------------
+# Vendor signatures — order matters; more-specific first
+# ---------------------------------------------------------------------------
+VENDOR_SIGNATURES: dict[str, list[str]] = {
+    "qrestik":  ["qrestik", "hor al anz", "nrakaeak", "rakbank"],
+    "infinitum": ["infinitum global", "infinitumglobal.org", "jp morgan chase"],
+}
 
-
-def _get_nlp():
-    global _nlp
-    if _nlp is None:
-        try:
-            import spacy
-
-            _nlp = spacy.load("en_core_web_sm")
-        except OSError:
-            _nlp = False
-    return _nlp if _nlp else None
-
+# ---------------------------------------------------------------------------
+# Text extraction
+# ---------------------------------------------------------------------------
 
 def _extract_text_pdf(path: str) -> str:
     import pdfplumber
-
     parts: list[str] = []
     with pdfplumber.open(path) as pdf:
         for page in pdf.pages:
             text = page.extract_text() or ""
             parts.append(text)
+            # OCR fallback for image-based pages
             if len(text.strip()) < 50:
                 try:
                     import pytesseract
-
                     img = page.to_image(resolution=200).original
                     ocr = pytesseract.image_to_string(img)
                     if len(ocr.strip()) > len(text.strip()):
@@ -44,7 +45,6 @@ def _extract_text_pdf(path: str) -> str:
 
 def _extract_text_docx(path: str) -> str:
     from docx import Document
-
     doc = Document(path)
     parts = [p.text for p in doc.paragraphs if p.text.strip()]
     for table in doc.tables:
@@ -53,232 +53,147 @@ def _extract_text_docx(path: str) -> str:
     return "\n".join(parts)
 
 
-def _regex_extract(text: str) -> dict:
-    data: dict = {}
-    inv_match = re.search(r"(?:INV[-\s]?|Invoice\s*#?\s*)(\d{4,}|[A-Z0-9-]{4,})", text, re.I)
-    if inv_match:
-        data["invoice_number"] = inv_match.group(0).strip().upper().replace(" ", "-")
-
-    po_match = re.search(r"(?:PO|P\.O\.)\s*(?:#|No\.?)?\s*([A-Z0-9-]+)", text, re.I)
-    if po_match:
-        data["po_number"] = po_match.group(1)
-
-    date_patterns = [
-        r"(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})",
-        r"((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{1,2},?\s+\d{4})",
-    ]
-    for pat in date_patterns:
-        m = re.search(r"Invoice\s*Date[:\s]*" + pat, text, re.I)
-        if not m:
-            m = re.search(pat, text)
-        if m:
-            raw = m.group(1)
-            for fmt in ("%m/%d/%Y", "%m-%d-%Y", "%d/%m/%Y", "%B %d, %Y", "%b %d, %Y"):
-                try:
-                    data["invoice_date"] = datetime.strptime(raw.replace(",", ""), fmt).date()
-                    break
-                except ValueError:
-                    continue
-            break
-
-    money = re.findall(r"\$?\s*([\d,]+\.\d{2})", text)
-    if money:
-        amounts = [float(x.replace(",", "")) for x in money]
-        data["total"] = max(amounts)
-        if len(amounts) > 1:
-            data["tax"] = amounts[-2] if amounts[-2] < data["total"] else None
-            data["subtotal"] = data["total"] - (data.get("tax") or 0)
-
-    if "$" in text:
-        data["currency"] = "USD"
-    elif "€" in text:
-        data["currency"] = "EUR"
-
-    return data
-
-
-def _ner_extract(text: str) -> dict:
-    nlp = _get_nlp()
-    if not nlp:
-        return {}
-    doc = nlp(text[:100000])
-    data: dict = {}
-    orgs = [ent.text for ent in doc.ents if ent.label_ == "ORG"]
-    if orgs:
-        data["customer_name"] = orgs[0]
-    return data
-
-
-def _extract_address_block(text: str, header: str) -> str | None:
-    pattern = rf"{header}\s*[:\n]\s*(.+?)(?:\n\s*\n|Ship To|Bill To|Line Items|Subtotal|Total|$)"
-    m = re.search(pattern, text, re.I | re.S)
-    if m:
-        return m.group(1).strip()[:500]
-    return None
-
-
-def _extract_line_items(path: str, text: str) -> list[LineItemSchema]:
-    items: list[LineItemSchema] = []
-    ext = Path(path).suffix.lower()
-
-    if ext == ".pdf":
-        import pdfplumber
-
-        largest: list[list[str | None]] = []
-        with pdfplumber.open(path) as pdf:
-            for page in pdf.pages:
-                for table in page.extract_tables() or []:
-                    if len(table) > len(largest):
-                        largest = table
-        if len(largest) > 1:
-            for row in largest[1:]:
-                if not row or not any(row):
-                    continue
-                cells = [str(c or "").strip() for c in row]
-                if len(cells) >= 4:
-                    try:
-                        qty = float(re.sub(r"[^\d.]", "", cells[1]) or 1)
-                        rate = float(re.sub(r"[^\d.]", "", cells[2]) or 0)
-                        amount = float(re.sub(r"[^\d.]", "", cells[3]) or qty * rate)
-                        items.append(
-                            LineItemSchema(description=cells[0], qty=qty, rate=rate, amount=amount)
-                        )
-                    except ValueError:
-                        continue
-    elif ext in {".docx", ".doc"}:
-        from docx import Document
-
-        doc = Document(path)
-        for table in doc.tables:
-            rows = table.rows
-            if len(rows) < 2:
-                continue
-            for row in rows[1:]:
-                cells = [c.text.strip() for c in row.cells]
-                if len(cells) >= 4 and cells[0]:
-                    try:
-                        qty = float(re.sub(r"[^\d.]", "", cells[1]) or 1)
-                        rate = float(re.sub(r"[^\d.]", "", cells[2]) or 0)
-                        amount = float(re.sub(r"[^\d.]", "", cells[3]) or qty * rate)
-                        items.append(
-                            LineItemSchema(description=cells[0], qty=qty, rate=rate, amount=amount)
-                        )
-                    except ValueError:
-                        continue
-
-    if not items:
-        for line in text.splitlines():
-            m = re.match(r"^(.+?)\s+(\d+(?:\.\d+)?)\s+\$?([\d,]+\.\d{2})\s+\$?([\d,]+\.\d{2})$", line.strip())
-            if m:
-                items.append(
-                    LineItemSchema(
-                        description=m.group(1).strip(),
-                        qty=float(m.group(2)),
-                        rate=float(m.group(3).replace(",", "")),
-                        amount=float(m.group(4).replace(",", "")),
-                    )
-                )
-    return items
-
-
 # ---------------------------------------------------------------------------
-# NEW: Vendor detection
+# Vendor detection
 # ---------------------------------------------------------------------------
 
 def _detect_vendor(text: str) -> str:
-    """Return 'qrestik', 'infinitum', or 'generic' based on PDF text content."""
     t = text.lower()
-    if any(k in t for k in ["qrestik", "hor al anz", "nrakaeak", "rakbank"]):
-        return "qrestik"
-    if any(k in t for k in ["infinitum global", "infinitumglobal.org", "jp morgan chase"]):
-        return "infinitum"
+    for vendor, patterns in VENDOR_SIGNATURES.items():
+        if any(p in t for p in patterns):
+            return vendor
     return "generic"
 
 
 # ---------------------------------------------------------------------------
-# NEW: Qrestik-specific extraction
+# Shared helpers
+# ---------------------------------------------------------------------------
+
+def _first_match(pattern: str, text: str, flags: int = re.IGNORECASE) -> Optional[str]:
+    m = re.search(pattern, text, flags)
+    return m.group(1).strip() if m else None
+
+
+def _parse_date(raw: str) -> Optional[object]:
+    """Try multiple date formats, return date or None."""
+    if not raw:
+        return None
+    # Strip ordinal suffixes: 1st → 1
+    cleaned = re.sub(r"(\d+)(?:st|nd|rd|th)", r"\1", raw).strip()
+    for fmt in (
+        "%d/%m/%Y", "%m/%d/%Y", "%d-%m-%Y", "%m-%d-%Y",
+        "%B %d, %Y", "%b %d, %Y", "%d %B %Y", "%d %b %Y",
+    ):
+        try:
+            return datetime.strptime(cleaned, fmt).date()
+        except ValueError:
+            continue
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Qrestik-specific extraction
 # ---------------------------------------------------------------------------
 
 def _extract_qrestik(text: str) -> dict:
-    """
-    Extract fields specific to Qrestik invoices (AED currency, RAKBANK remittance).
-    Returns a dict that gets merged into the main result.
-    """
     data: dict = {}
 
-    # Invoice number — Qrestik format: "Invoice number : 0069"
+    # Invoice number — "Invoice number : 0069"
     m = re.search(r"Invoice\s+number\s*[:\-]\s*(\d+)", text, re.I)
     if m:
         data["invoice_number"] = m.group(1).strip()
 
-    # Date — Qrestik format: "Date : 13/03/2026"
+    # Date — "Date : 13/03/2026"
     m = re.search(r"Date\s*[:\-]\s*(\d{1,2}/\d{1,2}/\d{4})", text, re.I)
     if m:
-        raw = m.group(1)
-        for fmt in ("%d/%m/%Y", "%m/%d/%Y"):
-            try:
-                data["invoice_date"] = datetime.strptime(raw, fmt).date()
-                break
-            except ValueError:
-                continue
+        data["invoice_date"] = _parse_date(m.group(1))
 
-    # Currency and total — "AED 7,345"
     data["currency"] = "AED"
-    m = re.search(r"AED\s+([\d,]+(?:\.\d+)?)", text)
+    data["vendor_name"] = "Qrestik Technologies L.L.C"
+
+    # Total — "AED 7,345"
+    m = re.search(r"AED\s+([\d,]+(?:\.\d+)?)$", text, re.MULTILINE)
+    if not m:
+        m = re.search(r"Total.*?AED\s+([\d,]+(?:\.\d+)?)", text, re.I | re.S)
     if m:
         data["total"] = float(m.group(1).replace(",", ""))
-
-    # Vendor name
-    data["vendor_name"] = "Qrestik Technologies L.L.C"
 
     # Bill-to customer
     m = re.search(r"Bill to[:\s]*\n\s*(.+?)(?:\n|,)", text, re.I)
     if m:
         data["customer_name"] = m.group(1).strip()
 
-    # Bill-to PO Box
+    # Address fields
     m = re.search(r"PO\s*Box\s+(\d+)", text, re.I)
     if m:
         data["bill_to_po_box"] = m.group(1)
 
-    # Remittance / banking fields
-    m = re.search(r"Account Number\s*[–\-:]\s*([\d]+)", text)
-    if m:
-        data["bank_account_number"] = m.group(1)
+    bill_addr_parts = []
+    if "bill_to_po_box" in data:
+        bill_addr_parts.append(f"PO Box {data['bill_to_po_box']}")
+    city_m = re.search(r"(?:Dubai|Abu Dhabi|Sharjah|Ajman|RAK)", text, re.I)
+    if city_m:
+        bill_addr_parts.append(city_m.group(0))
+    bill_addr_parts.append("UAE")
+    data["bill_to_address"] = ", ".join(bill_addr_parts)
 
-    m = re.search(r"IBAN Number\s*[–\-:]\s*([A-Z0-9]+)", text)
-    if m:
-        data["bank_iban"] = m.group(1)
+    # Vendor address
+    addr_block = re.search(
+        r"Qrestik Technologies\s+L\.?L\.?C\.?\s*\n(.+?)\nBill to",
+        text, re.I | re.S
+    )
+    if addr_block:
+        lines = [l.strip() for l in addr_block.group(1).splitlines() if l.strip()]
+        data["ship_to_address"] = ", ".join(lines)
 
-    m = re.search(r"Branch Name\s*[–\-:]\s*(.+)", text)
-    if m:
-        data["bank_branch"] = m.group(1).strip()
+    # Banking (RAKBANK)
+    data["bank_account_number"] = _first_match(r"Account Number\s*[–\-:]\s*([\d]+)", text)
+    data["bank_iban"]            = _first_match(r"IBAN Number\s*[–\-:]\s*([A-Z0-9]+)", text)
+    data["bank_branch"]          = _first_match(r"Branch Name\s*[–\-:]\s*(.+)", text)
+    data["bank_swift"]           = _first_match(r"Swift Code\s*[–\-:]\s*([A-Z0-9]+)", text)
+    data["bank_routing"]         = _first_match(r"Routing Code\s*[–\-:]\s*([0-9]+)", text)
+    data["bank_address"]         = _first_match(r"Address\s*[–\-:]\s*(.+)", text)
 
-    m = re.search(r"Swift Code\s*[–\-:]\s*([A-Z0-9]+)", text)
-    if m:
-        data["bank_swift"] = m.group(1)
+    # Line items
+    line_items: list[LineItemSchema] = []
+    item_block = re.search(
+        r"Description\s+Total Amount\s*\n(.+?)\nRemittance",
+        text, re.I | re.S
+    )
+    if item_block:
+        for row in item_block.group(1).splitlines():
+            row = row.strip()
+            if not row:
+                continue
+            lm = re.match(r"(.+?)\s+(AED|USD|EUR)\s+([\d,]+(?:\.\d+)?)", row, re.I)
+            if lm:
+                amt = float(lm.group(3).replace(",", ""))
+                line_items.append(LineItemSchema(
+                    description=lm.group(1).strip(),
+                    qty=1, rate=amt, amount=amt
+                ))
+    # Fallback
+    if not line_items:
+        desc = _first_match(r"(Oracle Fusion[^\n]+)", text)
+        if desc:
+            amt_raw = _first_match(r"AED\s+([\d,]+(?:\.\d+)?)", text)
+            amt = float(amt_raw.replace(",", "")) if amt_raw else 0.0
+            line_items.append(LineItemSchema(description=desc, qty=1, rate=amt, amount=amt))
+    data["line_items"] = line_items
 
-    m = re.search(r"Routing Code\s*[–\-:]\s*([0-9]+)", text)
-    if m:
-        data["bank_routing"] = m.group(1)
-
-    m = re.search(r"Address\s*[–\-:]\s*(.+)", text)
-    if m:
-        data["bank_address"] = m.group(1).strip()
+    # Subtotal / tax
+    if data.get("total"):
+        data["subtotal"] = data["total"]
+        data["tax"] = 0.0
 
     return data
 
 
 # ---------------------------------------------------------------------------
-# NEW: Infinitum-specific extraction
+# Infinitum-specific extraction
 # ---------------------------------------------------------------------------
 
 def _extract_infinitum(text: str) -> dict:
-    """
-    Extract fields specific to Infinitum Global invoices (USD, JP Morgan remittance,
-    ship-to contact, PO number, SKU, billing period).
-    Returns a dict that gets merged into the main result.
-    """
     data: dict = {}
 
     # Invoice number — "INVOICE#: 3611"
@@ -289,94 +204,223 @@ def _extract_infinitum(text: str) -> dict:
     # Date — "DATE: 01st June 2026"
     m = re.search(r"DATE\s*[:\-]\s*(.+?)(?:\n|INVOICE)", text, re.I | re.S)
     if m:
-        raw = m.group(1).strip()
-        # Strip ordinal suffixes: 1st → 1, 2nd → 2, etc.
-        raw_clean = re.sub(r"(\d+)(?:st|nd|rd|th)", r"\1", raw)
-        for fmt in ("%d %B %Y", "%d %b %Y"):
-            try:
-                data["invoice_date"] = datetime.strptime(raw_clean.strip(), fmt).date()
-                break
-            except ValueError:
-                continue
+        data["invoice_date"] = _parse_date(m.group(1).strip())
 
-    # Currency and total
     data["currency"] = "USD"
+    data["vendor_name"] = "Infinitum Global LLC"
+
+    # Total
     m = re.search(r"Total\s+\$\s*([\d,]+(?:\.\d+)?)", text, re.I)
     if m:
         data["total"] = float(m.group(1).replace(",", ""))
 
-    # Vendor name
-    data["vendor_name"] = "Infinitum Global LLC"
-
-    # Bill-to company (first line after "Bill To:")
+    # Bill-to
     m = re.search(r"Bill To[:\s]*\n\s*(.+?)(?:\n)", text, re.I)
     if m:
         data["customer_name"] = m.group(1).strip()
 
-    # Ship-to contact name (first line after "Ship To:")
-    m = re.search(r"Ship To[:\s]*\n\s*(.+?)(?:\n)", text, re.I)
-    if m:
-        data["ship_to_contact"] = m.group(1).strip()
+    bill_block = re.search(r"Bill To[:\s]*\n(.+?)(?:Ship To|Description)", text, re.I | re.S)
+    if bill_block:
+        lines = [l.strip() for l in bill_block.group(1).splitlines() if l.strip()]
+        data["bill_to_address"] = "\n".join(lines[1:]) if len(lines) > 1 else None
 
-    # Ship-to company (second line after "Ship To:")
-    m = re.search(r"Ship To[:\s]*\n\s*.+?\n\s*(.+?)(?:\n)", text, re.I)
-    if m:
-        data["ship_to_company"] = m.group(1).strip()
+    # Ship-to
+    ship_block = re.search(r"Ship To[:\s]*\n(.+?)(?:Description|Po\.Number|$)", text, re.I | re.S)
+    if ship_block:
+        lines = [l.strip() for l in ship_block.group(1).splitlines() if l.strip()]
+        ship_parts = []
+        if len(lines) > 2:
+            ship_parts = lines[2:]
+        data["ship_to_address"] = "\n".join(ship_parts) if ship_parts else None
 
     # PO number — "#PO018558"
     m = re.search(r"#\s*(PO\d+)", text, re.I)
     if m:
         data["po_number"] = m.group(1)
 
-    # SKU / Code
-    m = re.search(r"\b(\d{6}-\d+)\b", text)
-    if m:
-        data["sku"] = m.group(1)
-
-    # Billing period — "1st May 2026 to 31st May 2026"
+    # Billing period
     m = re.search(
-        r"(\d+\w*\s+\w+\s+\d{4})\s+to\s+(\d+\w*\s+\w+\s+\d{4})",
-        text, re.I
+        r"(\d+\w*\s+\w+\s+\d{4})\s+to\s+(\d+\w*\s+\w+\s+\d{4})", text, re.I
     )
-    if m:
-        data["period_start"] = m.group(1).strip()
-        data["period_end"] = m.group(2).strip()
+    period_start = m.group(1).strip() if m else None
+    period_end   = m.group(2).strip() if m else None
 
-    # Remittance / banking
-    m = re.search(r"Bank Name[:\s]+(.+)", text)
-    if m:
-        data["bank_name"] = m.group(1).strip()
+    # Line items table
+    line_items: list[LineItemSchema] = []
+    item_block = re.search(
+        r"Description\s+Po\.Number\s+Code/SKU\s+Period\s+Amount\s*\n(.+?)(?:Total|\Z)",
+        text, re.I | re.S
+    )
+    if item_block:
+        for row in item_block.group(1).splitlines():
+            row = row.strip()
+            if not row or row.lower().startswith("total"):
+                continue
+            lm = re.match(
+                r"(.+?)\s+(#\s*\w+)\s+([\w\-]+)\s+"
+                r"(\d+\w*\s+\w+\s+\d{4})\s+to\s+(\d+\w*\s+\w+\s+\d{4})\s+"
+                r"\$\s*([\d,]+(?:\.\d+)?)",
+                row
+            )
+            if lm:
+                amt = float(lm.group(6).replace(",", ""))
+                desc = f"{lm.group(1).strip()} | {lm.group(3).strip()}"
+                if period_start:
+                    desc += f" ({lm.group(4)} – {lm.group(5)})"
+                line_items.append(LineItemSchema(description=desc, qty=1, rate=amt, amount=amt))
 
-    m = re.search(r"Account[:\s]+([\d]+)", text)
-    if m:
-        data["bank_account_number"] = m.group(1)
+    # Fallback BRATS line
+    if not line_items:
+        bm = re.search(
+            r"(BRATS\s+Project)\s+(#\s*\w+)\s+([\w\-]+)\s+"
+            r"(.+?\d{4})\s+to\s+(.+?\d{4})\s+\$\s*([\d,]+(?:\.\d+)?)",
+            text, re.I
+        )
+        if bm:
+            amt = float(bm.group(6).replace(",", ""))
+            line_items.append(LineItemSchema(
+                description=f"{bm.group(1).strip()} | {bm.group(3).strip()} ({bm.group(4)} – {bm.group(5)})",
+                qty=1, rate=amt, amount=amt
+            ))
+    data["line_items"] = line_items
 
-    m = re.search(r"Routing\s*#[:\s]+([\d]+)", text)
-    if m:
-        data["bank_routing"] = m.group(1)
-
-    m = re.search(
+    # Banking (JP Morgan)
+    data["bank_name"]           = _first_match(r"Bank Name[:\s]+(.+)", text)
+    data["bank_account_number"] = _first_match(r"Account[:\s]+([\d]+)", text)
+    data["bank_routing"]        = _first_match(r"Routing\s*#[:\s]+([\d]+)", text)
+    data["bank_fein"]           = _first_match(
         r"Federal Employee Identification Number\s*\(FEIN\)[:\s]+([\d\-]+)", text
     )
-    if m:
-        data["bank_fein"] = m.group(1)
+    data["bank_address"]        = _first_match(r"Address Associated w/\s*Account[:\s]+(.+)", text)
+    data["bank_email"]          = _first_match(r"Email Associated w/\s*Account[:\s]+(\S+@\S+)", text)
 
-    m = re.search(r"Address Associated w/\s*Account[:\s]+(.+)", text)
-    if m:
-        data["bank_address"] = m.group(1).strip()
-
-    m = re.search(r"Email Associated w/\s*Account[:\s]+(\S+@\S+)", text)
-    if m:
-        data["bank_email"] = m.group(1)
+    if data.get("total"):
+        data["subtotal"] = data["total"]
+        data["tax"] = 0.0
 
     return data
 
 
 # ---------------------------------------------------------------------------
-# Existing parse_invoice — extended with vendor-specific enrichment
+# Generic fallback extraction
+# ---------------------------------------------------------------------------
+
+def _extract_generic(text: str) -> dict:
+    data: dict = {}
+
+    inv_m = re.search(r"(?:INV[-\s]?|Invoice\s*#?\s*)(\d{4,}|[A-Z0-9-]{4,})", text, re.I)
+    if inv_m:
+        data["invoice_number"] = inv_m.group(0).strip().upper().replace(" ", "-")
+
+    po_m = re.search(r"(?:PO|P\.O\.)\s*(?:#|No\.?)?\s*([A-Z0-9-]+)", text, re.I)
+    if po_m:
+        data["po_number"] = po_m.group(1)
+
+    date_patterns = [
+        r"(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})",
+        r"((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{1,2},?\s+\d{4})",
+    ]
+    for pat in date_patterns:
+        m = re.search(r"Invoice\s*Date[:\s]*" + pat, text, re.I) or re.search(pat, text)
+        if m:
+            data["invoice_date"] = _parse_date(m.group(1))
+            break
+
+    money = re.findall(r"\$?\s*([\d,]+\.\d{2})", text)
+    if money:
+        amounts = [float(x.replace(",", "")) for x in money]
+        data["total"] = max(amounts)
+        if len(amounts) > 1:
+            data["subtotal"] = sorted(amounts)[-2]
+            data["tax"] = data["total"] - data["subtotal"]
+
+    data["currency"] = "EUR" if "€" in text else "USD"
+
+    # NER for customer name
+    try:
+        import spacy
+        nlp = spacy.load("en_core_web_sm")
+        doc = nlp(text[:100_000])
+        orgs = [ent.text for ent in doc.ents if ent.label_ == "ORG"]
+        if orgs:
+            data["customer_name"] = orgs[0]
+    except Exception:
+        pass
+
+    # Address blocks
+    def _addr_block(header: str) -> Optional[str]:
+        m = re.search(
+            rf"{header}\s*[:\n]\s*(.+?)(?:\n\s*\n|Ship To|Bill To|Line Items|Subtotal|Total|$)",
+            text, re.I | re.S
+        )
+        return m.group(1).strip()[:500] if m else None
+
+    data["bill_to_address"] = _addr_block("Bill To")
+    data["ship_to_address"] = _addr_block("Ship To")
+
+    # Line items via table extraction
+    line_items: list[LineItemSchema] = []
+    try:
+        import pdfplumber  # only available for PDFs
+        # caller passes path via the text; not available here —
+        # generic text-based line item fallback:
+        pass
+    except ImportError:
+        pass
+    for line in text.splitlines():
+        lm = re.match(
+            r"^(.+?)\s+(\d+(?:\.\d+)?)\s+\$?([\d,]+\.\d{2})\s+\$?([\d,]+\.\d{2})$",
+            line.strip()
+        )
+        if lm:
+            line_items.append(LineItemSchema(
+                description=lm.group(1).strip(),
+                qty=float(lm.group(2)),
+                rate=float(lm.group(3).replace(",", "")),
+                amount=float(lm.group(4).replace(",", "")),
+            ))
+    data["line_items"] = line_items
+    return data
+
+
+# ---------------------------------------------------------------------------
+# Line item extraction from PDF tables (vendor-agnostic)
+# ---------------------------------------------------------------------------
+
+def _extract_line_items_pdf(path: str) -> list[LineItemSchema]:
+    import pdfplumber
+    largest: list[list] = []
+    with pdfplumber.open(path) as pdf:
+        for page in pdf.pages:
+            for table in (page.extract_tables() or []):
+                if len(table) > len(largest):
+                    largest = table
+    items: list[LineItemSchema] = []
+    if len(largest) > 1:
+        for row in largest[1:]:
+            if not row or not any(row):
+                continue
+            cells = [str(c or "").strip() for c in row]
+            if len(cells) >= 4 and cells[0]:
+                try:
+                    qty = float(re.sub(r"[^\d.]", "", cells[1]) or 1)
+                    rate = float(re.sub(r"[^\d.]", "", cells[2]) or 0)
+                    amount = float(re.sub(r"[^\d.]", "", cells[3]) or qty * rate)
+                    items.append(LineItemSchema(description=cells[0], qty=qty, rate=rate, amount=amount))
+                except ValueError:
+                    continue
+    return items
+
+
+# ---------------------------------------------------------------------------
+# Public entry point
 # ---------------------------------------------------------------------------
 
 def parse_invoice(file_path: str) -> InvoiceParseSchema:
+    """
+    Auto-detect vendor from the uploaded PDF/DOCX and return a fully
+    populated InvoiceParseSchema ready for front-end auto-fill.
+    """
     path = Path(file_path)
     if not path.exists():
         return InvoiceParseSchema(missing_fields=REQUIRED_FIELDS + ["file"])
@@ -389,27 +433,28 @@ def parse_invoice(file_path: str) -> InvoiceParseSchema:
     else:
         return InvoiceParseSchema(missing_fields=REQUIRED_FIELDS + ["file_type"])
 
-    merged: dict = {}
-    merged.update(_regex_extract(text))
-    merged.update(_ner_extract(text))
-    merged["bill_to_address"] = _extract_address_block(text, "Bill To")
-    merged["ship_to_address"] = _extract_address_block(text, "Ship To")
-    merged["line_items"] = _extract_line_items(file_path, text)
-
     vendor = _detect_vendor(text)
+    logger.info("parse_invoice: detected vendor=%s for %s", vendor, path.name)
+
     if vendor == "qrestik":
-        merged.update(_extract_qrestik(text))
+        merged = _extract_qrestik(text)
         merged["vendor"] = "qrestik"
     elif vendor == "infinitum":
-        merged.update(_extract_infinitum(text))
+        merged = _extract_infinitum(text)
         merged["vendor"] = "infinitum"
+    else:
+        merged = _extract_generic(text)
+        merged["vendor"] = "generic"
+        # Try table extraction for generics
+        if ext == ".pdf" and not merged.get("line_items"):
+            merged["line_items"] = _extract_line_items_pdf(file_path)
+
+    line_items = merged.pop("line_items", [])
 
     result = InvoiceParseSchema(
         raw_text_length=len(text),
-        line_items=merged.get("line_items") or [],
-        **{k: v for k, v in merged.items() if k != "line_items"},
+        line_items=line_items,
+        **{k: v for k, v in merged.items() if k not in ("line_items",) and v is not None},
     )
-
-    missing = [f for f in REQUIRED_FIELDS if getattr(result, f) in (None, "", [])]
-    result.missing_fields = missing
+    result.missing_fields = [f for f in REQUIRED_FIELDS if getattr(result, f) in (None, "", [])]
     return result
