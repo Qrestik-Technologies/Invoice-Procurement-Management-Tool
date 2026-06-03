@@ -131,30 +131,31 @@ export default function InvoicesPage() {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
       const f = res.data.data || res.data;
+      console.log('PARSED PDF:', f); // ← remove once due_date is confirmed working
+
+      // due_date: use backend value, or fall back to Net 30 from invoice_date
+      const computedDueDate = f.due_date
+        ? String(f.due_date)
+        : f.invoice_date
+          ? (() => { const d = new Date(f.invoice_date); d.setDate(d.getDate() + 30); return d.toISOString().split('T')[0]; })()
+          : null;
+
+      // Auto-select customer via fuzzy match on vendor name
+      const detectedName = (f.vendor_name || f.vendor || '').toLowerCase().trim();
+      const customerMatch = detectedName
+        ? customers.find(c => { const n = c.name.toLowerCase(); return detectedName.includes(n) || n.includes(detectedName); })
+        : null;
 
       setForm(prev => ({
         ...prev,
-        invoice_number: f.invoice_number || prev.invoice_number,
-        amount:         f.total          ? String(f.total)         : prev.amount,
-        currency:       f.currency       || prev.currency,
-        issue_date:     f.invoice_date   ? String(f.invoice_date)  : prev.issue_date,
+        invoice_number: f.invoice_number  || prev.invoice_number,
+        amount:         f.total           ? String(f.total)        : prev.amount,
+        currency:       f.currency        || prev.currency,
+        issue_date:     f.invoice_date    ? String(f.invoice_date) : prev.issue_date,
+        due_date:       computedDueDate   || prev.due_date,
         description:    generateDescription(f) || prev.description,
+        customer_id:    customerMatch     ? String(customerMatch.id) : prev.customer_id,
       }));
-
-      // ── Auto-select customer based on detected vendor name ───────────────
-      const detectedName = (f.vendor_name || f.vendor || '').toLowerCase().trim();
-
-      if (detectedName) {
-        // Try fuzzy match against whatever customers list is currently loaded
-        const customerMatch = customers.find(c => {
-          const cName = c.name.toLowerCase();
-          return detectedName.includes(cName) || cName.includes(detectedName);
-        });
-
-        if (customerMatch) {
-          setForm(prev => ({ ...prev, customer_id: String(customerMatch.id) }));
-        }
-      }
 
       setParsedVendor({
         vendor:         f.vendor,
