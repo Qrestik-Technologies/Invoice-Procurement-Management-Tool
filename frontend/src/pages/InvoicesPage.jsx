@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
-import { Plus, Download} from 'lucide-react';
+import { Plus, Download, Upload, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import apiClient from '../api/client';
 import Button from '../components/ui/Button';
@@ -61,6 +61,7 @@ export default function InvoicesPage() {
   const [statusFilter, setStatusFilter] = useState('');
   const [form, setForm] = useState(EMPTY_FORM);
   const [parsing, setParsing] = useState(false);
+  const [parsedVendor, setParsedVendor] = useState(null);
   const fileRef = useRef();
 
   const load = () => {
@@ -98,44 +99,29 @@ export default function InvoicesPage() {
     data.append('file', file);
 
     setParsing(true);
+    setParsedVendor(null);
     try {
       const res = await apiClient.post('/invoices/parse', data, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
       const f = res.data.data || res.data;
 
-      // ── DEBUG: inspect every field the backend returns ─────────────────
-      console.log('PARSED INVOICE:', f);
-
       setForm(prev => ({
         ...prev,
         invoice_number: f.invoice_number || prev.invoice_number,
-        amount:         f.total          ? String(f.total)        : prev.amount,
+        amount:         f.total          ? String(f.total)         : prev.amount,
         currency:       f.currency       || prev.currency,
-
-        issue_date:
-          f.invoice_date ||
-          f.issue_date   ||
-          prev.issue_date,
-
-        due_date:
-          f.due_date ||
-          f.payment_due_date ||
-          f.dueDate ||
-          f.invoice_due_date ||
-          '',
-
-        description:
-          f.summary ||
-          f.description ||
-          f.invoice_summary ||
-          `Invoice from ${f.vendor_name || f.vendor || 'Vendor'}`,
+        issue_date:     f.invoice_date   ? String(f.invoice_date)  : prev.issue_date,
+        description:    f.vendor_name
+                          ? `${f.vendor_name}${f.period_start ? ` — ${f.period_start} to ${f.period_end}` : ''}`
+                          : prev.description,
       }));
 
       // ── Auto-select customer based on detected vendor name ───────────────
       const detectedName = (f.vendor_name || f.vendor || '').toLowerCase().trim();
 
       if (detectedName) {
+        // Try fuzzy match against whatever customers list is currently loaded
         const customerMatch = customers.find(c => {
           const cName = c.name.toLowerCase();
           return detectedName.includes(cName) || cName.includes(detectedName);
@@ -145,6 +131,23 @@ export default function InvoicesPage() {
           setForm(prev => ({ ...prev, customer_id: String(customerMatch.id) }));
         }
       }
+
+      setParsedVendor({
+        vendor:         f.vendor,
+        vendor_name:    f.vendor_name,
+        po_number:      f.po_number,
+        bank_iban:      f.bank_iban,
+        bank_swift:     f.bank_swift,
+        bank_routing:   f.bank_routing,
+        bank_account:   f.bank_account_number,
+        bank_name:      f.bank_name,
+        bank_fein:      f.bank_fein,
+        bank_email:     f.bank_email,
+        period_start:   f.period_start,
+        period_end:     f.period_end,
+        sku:            f.sku,
+        missing:        f.missing_fields || [],
+      });
 
       toast.success(`${f.vendor_name || 'Invoice'} parsed successfully`);
 
@@ -170,15 +173,10 @@ export default function InvoicesPage() {
       toast.success('Invoice created');
       setShowModal(false);
       setForm(EMPTY_FORM);
+      setParsedVendor(null);
       load();
     } catch (err) {
-      console.error('CREATE INVOICE ERROR:', err.response?.data);
-
-      toast.error(
-        err.response?.data?.detail ||
-        JSON.stringify(err.response?.data) ||
-        'Failed to create invoice'
-      );
+      toast.error(err.response?.data?.detail || 'Failed to create invoice');
     }
   };
 
@@ -204,7 +202,7 @@ export default function InvoicesPage() {
               <Download className="h-4 w-4" /> Export
             </Button>
             {canEdit && (
-              <Button size="sm" onClick={() => { setForm(EMPTY_FORM); setShowModal(true); }}>
+              <Button size="sm" onClick={() => { setForm(EMPTY_FORM); setParsedVendor(null); setShowModal(true); }}>
                 <Plus className="h-4 w-4" /> New Invoice
               </Button>
             )}
@@ -252,11 +250,58 @@ export default function InvoicesPage() {
       </div>
 
       {showModal && (
-        <Modal title="New Invoice" onClose={() => setShowModal(false)}>
+        <Modal title="New Invoice" onClose={() => { setShowModal(false); setParsedVendor(null); }}>
           <form onSubmit={handleCreate} className="space-y-4">
 
-      
-            {/* Parsed vendor summary removed */}
+            {/* ── PDF upload strip ── */}
+            <div className="flex items-center gap-3 rounded-lg border border-dashed border-border bg-gray-50 px-4 py-3">
+              <Upload className="h-4 w-4 shrink-0 text-[#9CA3AF]" />
+              <span className="text-xs text-[#6B7280]">Auto-fill from PDF</span>
+              <label className="ml-auto cursor-pointer">
+                <span className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-white hover:bg-primary/90 transition-colors">
+                  {parsing ? (
+                    <span className="flex items-center gap-1.5">
+                      <Loader2 className="h-3 w-3 animate-spin" /> Parsing…
+                    </span>
+                  ) : 'Upload PDF'}
+                </span>
+                <input
+                  ref={fileRef}
+                  type="file"
+                  accept=".pdf"
+                  className="hidden"
+                  onChange={handlePdfUpload}
+                  disabled={parsing}
+                />
+              </label>
+            </div>
+
+            {/* ── Parsed vendor summary ── */}
+            {parsedVendor && (
+              <div className="rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-xs space-y-1">
+                <p className="font-medium text-green-800">
+                  ✓ Detected: {parsedVendor.vendor_name || parsedVendor.vendor}
+                </p>
+                {parsedVendor.po_number    && <p className="text-green-700">PO: {parsedVendor.po_number}</p>}
+                {parsedVendor.period_start && <p className="text-green-700">Period: {parsedVendor.period_start} → {parsedVendor.period_end}</p>}
+                {parsedVendor.sku          && <p className="text-green-700">SKU: {parsedVendor.sku}</p>}
+                {(parsedVendor.bank_iban || parsedVendor.bank_account) && (
+                  <div className="mt-2 border-t border-green-200 pt-2 space-y-0.5">
+                    <p className="font-medium text-green-800">Remittance</p>
+                    {parsedVendor.bank_name    && <p className="text-green-700">Bank: {parsedVendor.bank_name}</p>}
+                    {parsedVendor.bank_account && <p className="text-green-700">Account: {parsedVendor.bank_account}</p>}
+                    {parsedVendor.bank_iban    && <p className="text-green-700">IBAN: {parsedVendor.bank_iban}</p>}
+                    {parsedVendor.bank_swift   && <p className="text-green-700">Swift: {parsedVendor.bank_swift}</p>}
+                    {parsedVendor.bank_routing && <p className="text-green-700">Routing: {parsedVendor.bank_routing}</p>}
+                    {parsedVendor.bank_fein    && <p className="text-green-700">FEIN: {parsedVendor.bank_fein}</p>}
+                    {parsedVendor.bank_email   && <p className="text-green-700">Email: {parsedVendor.bank_email}</p>}
+                  </div>
+                )}
+                {parsedVendor.missing?.length > 0 && (
+                  <p className="text-amber-600 mt-1">⚠ Fill manually: {parsedVendor.missing.join(', ')}</p>
+                )}
+              </div>
+            )}
 
             <div className="grid grid-cols-2 gap-4">
               <Input label="Invoice #" value={form.invoice_number} onChange={set('invoice_number')} required placeholder="INV-001" />
@@ -274,7 +319,7 @@ export default function InvoicesPage() {
             <Input label="Description" value={form.description} onChange={set('description')} placeholder="Optional" />
 
             <div className="flex justify-end gap-3 pt-2">
-              <Button variant="secondary" onClick={() => setShowModal(false)}>Cancel</Button>
+              <Button variant="secondary" onClick={() => { setShowModal(false); setParsedVendor(null); }}>Cancel</Button>
               <Button type="submit">Create Invoice</Button>
             </div>
           </form>
