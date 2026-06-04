@@ -31,3 +31,15 @@ class AuditAction(str, enum.Enum):
     exported = "exported"
     synced = "synced"
 
+
+class TemplateType(str, enum.Enum):
+    email = "email"
+    pdf = "pdf"
+    reminder = "reminder"
+    standard = "standard"
+
+class AlertStatus(str, enum.Enum):
+    on_track = "on_track"
+    at_risk = "at_risk"
+    delayed = "delayed"
+
