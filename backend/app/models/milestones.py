@@ -1,25 +1,273 @@
-from datetime import date, datetime
+from calendar import monthrange
+from datetime import date, datetime, timezone
+from decimal import Decimal
+from typing import Annotated, Optional
 
-from sqlalchemy import Date, DateTime, Enum, ForeignKey, String, Text, func
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+import redis.asyncio as aioredis
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.database import Base
-from app.models.enums import AlertStatus
+from app.core.company_scope import get_company_scope
+from app.core.database import get_db
+from app.core.rbac import require_admin, require_any_role, require_entry_or_above
+from app.core.security import get_redis
+from app.models.audit_logs import AuditLog
+from app.models.invoices import Invoice
+from app.models.payments import Payment
+from app.models.inovice_remainder import InvoiceReminder
+from app.models.enums import AuditAction, InvoiceStatus
+from app.schemas import (
+    APIResponse,
+    AuditLogRead,
+    CashFlowSummary,
+    HealthStatus,
+    PaymentCreate,
+    PaymentRead,
+    ReminderCreate,
+    ReminderRead,
+)
+from app.services.audit_service import write_audit
 
 
-class Milestone(Base):
-    __tablename__ = "milestones"
+payments_router = APIRouter(prefix="/payments", tags=["payments"])
 
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    project_name: Mapped[str] = mapped_column(String(255), nullable=False)
-    customer_id: Mapped[int] = mapped_column(ForeignKey("customers.id"), nullable=False, index=True)
-    start_date: Mapped[date] = mapped_column(Date, nullable=False)
-    end_date: Mapped[date] = mapped_column(Date, nullable=False)
-    alert_status: Mapped[AlertStatus] = mapped_column(
-        Enum(AlertStatus), nullable=False, default=AlertStatus.on_track
+
+@payments_router.get("", response_model=APIResponse[list[PaymentRead]])
+async def list_payments(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _=Depends(require_any_role),
+    company_id: Annotated[int | None, Depends(get_company_scope)] = None,
+    invoice_id: Optional[int] = Query(None),
+):
+    q = select(Payment)
+    if company_id is not None:
+        q = q.join(Invoice).where(Invoice.company_id == company_id)
+    if invoice_id:
+        q = q.where(Payment.invoice_id == invoice_id)
+    result = await db.execute(q.order_by(Payment.paid_at.desc()))
+    return APIResponse(data=[PaymentRead.model_validate(p) for p in result.scalars().all()])
+
+
+@payments_router.post("", response_model=APIResponse[PaymentRead], status_code=status.HTTP_201_CREATED)
+async def create_payment(
+    body: PaymentCreate,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user=Depends(require_entry_or_above),
+):
+    inv = await db.execute(select(Invoice).where(Invoice.id == body.invoice_id))
+    if not inv.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Invoice not found")
+
+    payment = Payment(**body.model_dump(), marked_by=current_user.id)
+    db.add(payment)
+    await db.flush()
+    await write_audit(db, changed_by=current_user.id, entity_type="payment",
+                      entity_id=payment.id, action=AuditAction.created)
+    await db.commit()
+    await db.refresh(payment)
+    return APIResponse(data=PaymentRead.model_validate(payment), message="Payment recorded")
+
+
+# ── Reminders router ──────────────────────────────────────────────────────────
+
+reminders_router = APIRouter(prefix="/reminders", tags=["reminders"])
+
+
+@reminders_router.get("", response_model=APIResponse[list[ReminderRead]])
+async def list_reminders(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _=Depends(require_any_role),
+    company_id: Annotated[int | None, Depends(get_company_scope)] = None,
+    invoice_id: Optional[int] = Query(None),
+):
+    q = select(InvoiceReminder)
+    if company_id is not None:
+        q = q.join(Invoice).where(Invoice.company_id == company_id)
+    if invoice_id:
+        q = q.where(InvoiceReminder.invoice_id == invoice_id)
+    result = await db.execute(q.order_by(InvoiceReminder.scheduled_at))
+    return APIResponse(data=[ReminderRead.model_validate(r) for r in result.scalars().all()])
+
+
+@reminders_router.post(
+    "/{invoice_id}/trigger",
+    response_model=APIResponse[ReminderRead],
+    status_code=status.HTTP_201_CREATED,
+)
+async def trigger_reminder(
+    invoice_id: int,
+    body: ReminderCreate,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user=Depends(require_entry_or_above),
+):
+    inv = await db.execute(select(Invoice).where(Invoice.id == invoice_id))
+    if not inv.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Invoice not found")
+
+    reminder = InvoiceReminder(
+        invoice_id=invoice_id,
+        scheduled_at=body.scheduled_at,
+        message=body.message,
+        sent_at=datetime.now(timezone.utc) if body.scheduled_at <= datetime.now(timezone.utc) else None,
     )
-    notes: Mapped[str | None] = mapped_column(Text)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    db.add(reminder)
+    await db.flush()
+    await write_audit(db, changed_by=current_user.id, entity_type="reminder",
+                      entity_id=reminder.id, action=AuditAction.created)
+    await db.commit()
+    await db.refresh(reminder)
+    return APIResponse(data=ReminderRead.model_validate(reminder), message="Reminder scheduled")
 
-    customer = relationship("Customer", back_populates="milestones")
-    invoices = relationship("Invoice", back_populates="milestone")
+
+# ── Cash flow router ──────────────────────────────────────────────────────────
+
+cashflow_router = APIRouter(prefix="/cash-flow", tags=["cash-flow"])
+
+
+@cashflow_router.get("/summary", response_model=APIResponse[CashFlowSummary])
+async def cash_flow_summary(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _=Depends(require_any_role),
+    company_id: Annotated[int | None, Depends(get_company_scope)] = None,
+    start: Optional[date] = Query(None, description="Period start (YYYY-MM-DD)"),
+    end: Optional[date] = Query(None, description="Period end (YYYY-MM-DD)"),
+    currency: str = Query("USD"),
+):
+    today = date.today()
+    period_start = start or date(today.year, today.month, 1)
+    period_end = end or today
+
+    q = select(Invoice).where(
+        Invoice.currency == currency,
+        Invoice.issue_date >= period_start,
+        Invoice.issue_date <= period_end,
+    )
+    if company_id is not None:
+        q = q.where(Invoice.company_id == company_id)
+    result = await db.execute(q)
+    invoices = result.scalars().all()
+
+    total_invoiced = sum((i.amount for i in invoices), Decimal("0"))
+    received = [i for i in invoices if i.status in (InvoiceStatus.received, InvoiceStatus.paid)]
+    total_received = sum((i.amount for i in received), Decimal("0"))
+    total_outstanding = total_invoiced - total_received
+
+    return APIResponse(data=CashFlowSummary(
+        period_start=period_start,
+        period_end=period_end,
+        total_invoiced=total_invoiced,
+        total_received=total_received,
+        total_outstanding=total_outstanding,
+        overdue_count=sum(1 for i in invoices if i.status == InvoiceStatus.overdue),
+        paid_count=sum(1 for i in invoices if i.status == InvoiceStatus.paid),
+        draft_count=sum(1 for i in invoices if i.status == InvoiceStatus.draft),
+        currency=currency,
+    ))
+
+
+@cashflow_router.get("/monthly", response_model=APIResponse[list[dict]])
+async def cash_flow_monthly(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _=Depends(require_any_role),
+    company_id: Annotated[int | None, Depends(get_company_scope)] = None,
+    months: int = Query(6, ge=1, le=24),
+    currency: str = Query("USD"),
+):
+    today = date.today()
+    result_months = []
+
+    for i in range(months - 1, -1, -1):
+        year = today.year
+        month = today.month - i
+        while month <= 0:
+            month += 12
+            year -= 1
+
+        month_start = date(year, month, 1)
+        month_end = date(year, month, monthrange(year, month)[1])
+        label = month_start.strftime("%b %Y")
+
+        inv_q = select(func.coalesce(func.sum(Invoice.total), 0)).where(
+            Invoice.currency == currency,
+            Invoice.invoice_date >= month_start,
+            Invoice.invoice_date <= month_end,
+        )
+        if company_id is not None:
+            inv_q = inv_q.where(Invoice.company_id == company_id)
+
+        pay_q = select(func.coalesce(func.sum(Payment.amount), 0)).where(
+            Payment.received_date >= month_start,
+            Payment.received_date <= month_end,
+        )
+        if company_id is not None:
+            pay_q = pay_q.join(Invoice).where(Invoice.company_id == company_id)
+
+        inv_total = float((await db.execute(inv_q)).scalar() or 0)
+        pay_total = float((await db.execute(pay_q)).scalar() or 0)
+
+        result_months.append({
+            "month": label,
+            "invoiced": inv_total,
+            "received": pay_total,
+            "outstanding": max(inv_total - pay_total, 0),
+        })
+
+    return APIResponse(data=result_months)
+
+
+# ── Audit log router ──────────────────────────────────────────────────────────
+
+audit_router = APIRouter(prefix="/audit-logs", tags=["audit-logs"])
+
+
+@audit_router.get("", response_model=APIResponse[list[AuditLogRead]])
+async def list_audit_logs(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _=Depends(require_admin),
+    entity_type: Optional[str] = Query(None),
+    entity_id: Optional[int] = Query(None),
+    limit: int = Query(100, le=500),
+    offset: int = Query(0, ge=0),
+):
+    q = select(AuditLog)
+    if entity_type:
+        q = q.where(AuditLog.entity_type == entity_type)
+    if entity_id:
+        q = q.where(AuditLog.entity_id == entity_id)
+    q = q.order_by(AuditLog.created_at.desc()).limit(limit).offset(offset)
+    result = await db.execute(q)
+    return APIResponse(data=[AuditLogRead.model_validate(a) for a in result.scalars().all()])
+
+
+# ── Health check router ───────────────────────────────────────────────────────
+
+health_router = APIRouter(prefix="/health", tags=["health"])
+
+
+@health_router.get("", response_model=HealthStatus)
+async def health_check(db: Annotated[AsyncSession, Depends(get_db)]):
+    db_status = "ok"
+    try:
+        await db.execute(select(func.now()))
+    except Exception:
+        db_status = "error"
+
+    redis_status = "ok"
+    try:
+        r = await get_redis()
+        await r.ping()
+    except Exception:
+        redis_status = "error"
+
+    celery_status = "not_configured"
+    try:
+        from celery import current_app as celery_app
+        inspect = celery_app.control.inspect(timeout=1)
+        stats = inspect.stats()
+        celery_status = "ok" if stats else "no_workers"
+    except Exception:
+        celery_status = "unavailable"
+
+    overall = "ok" if db_status == "ok" and redis_status == "ok" else "degraded"
+    return HealthStatus(status=overall, database=db_status, redis=redis_status, celery=celery_status)
