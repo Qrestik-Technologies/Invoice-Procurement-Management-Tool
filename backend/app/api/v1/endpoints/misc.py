@@ -12,7 +12,10 @@ from app.core.company_scope import get_company_scope
 from app.core.database import get_db
 from app.core.rbac import require_admin, require_any_role, require_entry_or_above
 from app.core.security import get_redis
-from app.models.domain import AuditLog, Invoice, Payment, Reminder
+from app.models.audit_logs import AuditLog
+from app.models.invoices import Invoice
+from app.models.payments import Payment
+from app.models.inovice_remainder import InvoiceReminder
 from app.models.enums import AuditAction, InvoiceStatus
 from app.schemas import (
     APIResponse,
@@ -78,12 +81,12 @@ async def list_reminders(
     company_id: Annotated[int | None, Depends(get_company_scope)] = None,
     invoice_id: Optional[int] = Query(None),
 ):
-    q = select(Reminder)
+    q = select(InvoiceReminder)
     if company_id is not None:
         q = q.join(Invoice).where(Invoice.company_id == company_id)
     if invoice_id:
-        q = q.where(Reminder.invoice_id == invoice_id)
-    result = await db.execute(q.order_by(Reminder.scheduled_at))
+        q = q.where(InvoiceReminder.invoice_id == invoice_id)
+    result = await db.execute(q.order_by(InvoiceReminder.scheduled_at))
     return APIResponse(data=[ReminderRead.model_validate(r) for r in result.scalars().all()])
 
 
@@ -98,12 +101,11 @@ async def trigger_reminder(
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user=Depends(require_entry_or_above),
 ):
-    """Schedule (and optionally immediately fire) a payment reminder for an invoice."""
     inv = await db.execute(select(Invoice).where(Invoice.id == invoice_id))
     if not inv.scalar_one_or_none():
         raise HTTPException(status_code=404, detail="Invoice not found")
 
-    reminder = Reminder(
+    reminder = InvoiceReminder(
         invoice_id=invoice_id,
         scheduled_at=body.scheduled_at,
         message=body.message,
@@ -172,7 +174,6 @@ async def cash_flow_monthly(
     months: int = Query(6, ge=1, le=24),
     currency: str = Query("USD"),
 ):
-    """Return monthly invoiced vs received totals for the last N months."""
     today = date.today()
     result_months = []
 
