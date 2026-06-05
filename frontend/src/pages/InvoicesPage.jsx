@@ -21,18 +21,27 @@ const STATUS_COLORS = {
 const EMPTY_FORM = {
   invoice_number: '',
   customer_id: '',
-  amount: '',
+  subtotal: '',
+  tax: '',
+  total: '',
   currency: 'USD',
-  issue_date: '',
+  invoice_date: '',
   due_date: '',
-  description: '',
+  notes: '',
 };
 
-// ── Fallback customers shown when the API returns nothing ──────────────────
 const DEFAULT_CUSTOMERS = [
   { id: 1, name: 'Qrestik Technologies L.L.C' },
   { id: 2, name: 'Infinitum Global' },
 ];
+
+function extractErrorMessage(err, fallback = 'Something went wrong') {
+  const detail = err?.response?.data?.detail;
+  if (!detail) return fallback;
+  if (typeof detail === 'string') return detail;
+  if (Array.isArray(detail)) return detail.map(d => `${d.loc?.slice(-1)[0] ?? 'field'}: ${d.msg}`).join(' · ');
+  return fallback;
+}
 
 function Modal({ title, onClose, children }) {
   return (
@@ -53,10 +62,7 @@ export default function InvoicesPage() {
   const { organizationId } = useOrganization();
   const meta = usePageMeta('Invoices', 'Manage billing and payment records');
   const [invoices, setInvoices] = useState([]);
-
-  // ── Initialise with DEFAULT_CUSTOMERS so the dropdown is never empty ──────
   const [customers, setCustomers] = useState(DEFAULT_CUSTOMERS);
-
   const [showModal, setShowModal] = useState(false);
   const [statusFilter, setStatusFilter] = useState('');
   const [form, setForm] = useState(EMPTY_FORM);
@@ -72,17 +78,9 @@ export default function InvoicesPage() {
   useEffect(() => {
     if (!organizationId) return;
     load();
-
-    // ── Fetch customers; fall back to defaults if API returns nothing ─────
-    apiClient
-      .get('/customers')
-      .then(r => {
-        const apiCustomers = r.data.data || [];
-        setCustomers(apiCustomers.length > 0 ? apiCustomers : DEFAULT_CUSTOMERS);
-      })
-      .catch(() => {
-        setCustomers(DEFAULT_CUSTOMERS);
-      });
+    apiClient.get('/customers')
+      .then(r => { const d = r.data.data || []; setCustomers(d.length > 0 ? d : DEFAULT_CUSTOMERS); })
+      .catch(() => setCustomers(DEFAULT_CUSTOMERS));
   }, [statusFilter, organizationId]);
 
   const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }));
@@ -90,72 +88,49 @@ export default function InvoicesPage() {
   const handlePdfUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
-    if (!file.name.endsWith('.pdf')) {
-      toast.error('Please upload a PDF file');
-      return;
-    }
-
+    if (!file.name.endsWith('.pdf')) { toast.error('Please upload a PDF file'); return; }
     const data = new FormData();
     data.append('file', file);
-
     setParsing(true);
     setParsedVendor(null);
     try {
-      const res = await apiClient.post('/invoices/parse', data, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
+      const res = await apiClient.post('/invoices/parse', data, { headers: { 'Content-Type': 'multipart/form-data' } });
       const f = res.data.data || res.data;
-
       setForm(prev => ({
         ...prev,
         invoice_number: f.invoice_number || prev.invoice_number,
-        amount:         f.total          ? String(f.total)         : prev.amount,
-        currency:       f.currency       || prev.currency,
-        issue_date:     f.invoice_date   ? String(f.invoice_date)  : prev.issue_date,
-        description:    f.vendor_name
-                          ? `${f.vendor_name}${f.period_start ? ` — ${f.period_start} to ${f.period_end}` : ''}`
-                          : prev.description,
+        subtotal: f.subtotal != null ? String(f.subtotal) : prev.subtotal,
+        tax: f.tax != null ? String(f.tax) : prev.tax,
+        total: f.total != null ? String(f.total) : prev.total,
+        currency: f.currency || prev.currency,
+        invoice_date: f.invoice_date ? String(f.invoice_date) : prev.invoice_date,
+        notes: f.vendor_name ? `${f.vendor_name}${f.period_start ? ` — ${f.period_start} to ${f.period_end}` : ''}` : prev.notes,
       }));
-
-      // ── Auto-select customer based on detected vendor name ───────────────
       const detectedName = (f.vendor_name || f.vendor || '').toLowerCase().trim();
-
       if (detectedName) {
-        // Try fuzzy match against whatever customers list is currently loaded
-        const customerMatch = customers.find(c => {
-          const cName = c.name.toLowerCase();
-          return detectedName.includes(cName) || cName.includes(detectedName);
-        });
-
-        if (customerMatch) {
-          setForm(prev => ({ ...prev, customer_id: String(customerMatch.id) }));
-        }
+        const match = customers.find(c => { const n = c.name.toLowerCase(); return detectedName.includes(n) || n.includes(detectedName); });
+        if (match) setForm(prev => ({ ...prev, customer_id: String(match.id) }));
       }
-
       setParsedVendor({
-        vendor:         f.vendor,
-        vendor_name:    f.vendor_name,
-        po_number:      f.po_number,
-        bank_iban:      f.bank_iban,
-        bank_swift:     f.bank_swift,
-        bank_routing:   f.bank_routing,
-        bank_account:   f.bank_account_number,
-        bank_name:      f.bank_name,
-        bank_fein:      f.bank_fein,
-        bank_email:     f.bank_email,
-        period_start:   f.period_start,
-        period_end:     f.period_end,
-        sku:            f.sku,
-        missing:        f.missing_fields || [],
+        vendor: f.vendor,
+        vendor_name: f.vendor_name,
+        po_number: f.po_number,
+        bank_iban: f.bank_iban,
+        bank_swift: f.bank_swift,
+        bank_routing: f.bank_routing,
+        bank_account: f.bank_account_number,
+        bank_name: f.bank_name,
+        bank_fein: f.bank_fein,
+        bank_email: f.bank_email,
+        period_start: f.period_start,
+        period_end: f.period_end,
+        sku: f.sku,
+        missing: f.missing_fields || [],
       });
-
       toast.success(`${f.vendor_name || 'Invoice'} parsed successfully`);
-
-      if (f.missing_fields?.length) {
-        toast(`Please fill in: ${f.missing_fields.join(', ')}`, { icon: '⚠️' });
-      }
+      if (f.missing_fields?.length) toast(`Please fill in: ${f.missing_fields.join(', ')}`, { icon: '⚠️' });
     } catch (err) {
-      toast.error(err.response?.data?.detail || 'Could not parse PDF');
+      toast.error(extractErrorMessage(err, 'Could not parse PDF'));
     } finally {
       setParsing(false);
       if (fileRef.current) fileRef.current.value = '';
@@ -166,9 +141,15 @@ export default function InvoicesPage() {
     e.preventDefault();
     try {
       await apiClient.post('/invoices', {
-        ...form,
-        customer_id: Number(form.customer_id),
-        amount: Number(form.amount),
+        invoice_number: form.invoice_number,
+        customer_id: form.customer_id ? Number(form.customer_id) : null,
+        currency: form.currency,
+        invoice_date: form.invoice_date,
+        due_date: form.due_date,
+        subtotal: Number(form.subtotal || 0),
+        tax: Number(form.tax || 0),
+        total: Number(form.total || 0),
+        notes: form.notes || null,
       });
       toast.success('Invoice created');
       setShowModal(false);
@@ -176,16 +157,20 @@ export default function InvoicesPage() {
       setParsedVendor(null);
       load();
     } catch (err) {
-      toast.error(err.response?.data?.detail || 'Failed to create invoice');
+      toast.error(extractErrorMessage(err, 'Failed to create invoice'));
     }
   };
 
   const handleExport = async () => {
-    const params = statusFilter ? `?status=${statusFilter}` : '';
-    const res = await apiClient.get(`/invoices/export/excel${params}`, { responseType: 'blob' });
-    const url = URL.createObjectURL(res.data);
-    const a = document.createElement('a'); a.href = url; a.download = 'invoices.xlsx'; a.click();
-    URL.revokeObjectURL(url);
+    try {
+      const params = statusFilter ? `?status=${statusFilter}` : '';
+      const res = await apiClient.get(`/invoices/export/excel${params}`, { responseType: 'blob' });
+      const url = URL.createObjectURL(res.data);
+      const a = document.createElement('a'); a.href = url; a.download = 'invoices.xlsx'; a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      toast.error(extractErrorMessage(err, 'Export failed'));
+    }
   };
 
   const canEdit = user?.role === 'admin' || user?.role === 'entry';
@@ -212,8 +197,15 @@ export default function InvoicesPage() {
 
       <div className="mb-4 flex gap-3">
         {['', 'draft', 'sent', 'received', 'overdue', 'paid', 'cancelled'].map(s => (
-          <button key={s} onClick={() => setStatusFilter(s)}
-            className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${statusFilter === s ? 'bg-primary text-white' : 'bg-white border border-border text-[#6B7280] hover:border-primary hover:text-primary'}`}>
+          <button
+            key={s}
+            onClick={() => setStatusFilter(s)}
+            className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+              statusFilter === s
+                ? 'bg-primary text-white'
+                : 'bg-white border border-border text-[#6B7280] hover:border-primary hover:text-primary'
+            }`}
+          >
             {s || 'All'}
           </button>
         ))}
@@ -226,7 +218,7 @@ export default function InvoicesPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border bg-gray-50 text-left text-xs font-medium text-[#6B7280]">
-                {['Invoice #', 'Customer', 'Amount', 'Issue Date', 'Due Date', 'Status'].map(h => (
+                {['Invoice #', 'Customer', 'Total', 'Invoice Date', 'Due Date', 'Status'].map(h => (
                   <th key={h} className="px-5 py-3">{h}</th>
                 ))}
               </tr>
@@ -236,11 +228,13 @@ export default function InvoicesPage() {
                 <tr key={inv.id} className="border-b border-border last:border-0 hover:bg-gray-50">
                   <td className="px-5 py-3 font-medium text-[#111827]">{inv.invoice_number}</td>
                   <td className="px-5 py-3 text-[#6B7280]">{customers.find(c => c.id === inv.customer_id)?.name || inv.customer_id}</td>
-                  <td className="px-5 py-3">${Number(inv.amount).toLocaleString()} {inv.currency}</td>
-                  <td className="px-5 py-3 text-[#6B7280]">{inv.issue_date}</td>
+                  <td className="px-5 py-3">${Number(inv.total).toLocaleString()} {inv.currency}</td>
+                  <td className="px-5 py-3 text-[#6B7280]">{inv.invoice_date}</td>
                   <td className="px-5 py-3 text-[#6B7280]">{inv.due_date}</td>
                   <td className="px-5 py-3">
-                    <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${STATUS_COLORS[inv.status] || ''}`}>{inv.status}</span>
+                    <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${STATUS_COLORS[inv.status] || ''}`}>
+                      {inv.status}
+                    </span>
                   </td>
                 </tr>
               ))}
@@ -253,48 +247,32 @@ export default function InvoicesPage() {
         <Modal title="New Invoice" onClose={() => { setShowModal(false); setParsedVendor(null); }}>
           <form onSubmit={handleCreate} className="space-y-4">
 
-            {/* ── PDF upload strip ── */}
             <div className="flex items-center gap-3 rounded-lg border border-dashed border-border bg-gray-50 px-4 py-3">
               <Upload className="h-4 w-4 shrink-0 text-[#9CA3AF]" />
               <span className="text-xs text-[#6B7280]">Auto-fill from PDF</span>
               <label className="ml-auto cursor-pointer">
                 <span className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-white hover:bg-primary/90 transition-colors">
-                  {parsing ? (
-                    <span className="flex items-center gap-1.5">
-                      <Loader2 className="h-3 w-3 animate-spin" /> Parsing…
-                    </span>
-                  ) : 'Upload PDF'}
+                  {parsing
+                    ? <span className="flex items-center gap-1.5"><Loader2 className="h-3 w-3 animate-spin" /> Parsing…</span>
+                    : 'Upload PDF'}
                 </span>
-                <input
-                  ref={fileRef}
-                  type="file"
-                  accept=".pdf"
-                  className="hidden"
-                  onChange={handlePdfUpload}
-                  disabled={parsing}
-                />
+                <input ref={fileRef} type="file" accept=".pdf" className="hidden" onChange={handlePdfUpload} disabled={parsing} />
               </label>
             </div>
 
-            {/* ── Parsed vendor summary ── */}
             {parsedVendor && (
               <div className="rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-xs space-y-1">
-                <p className="font-medium text-green-800">
-                  ✓ Detected: {parsedVendor.vendor_name || parsedVendor.vendor}
-                </p>
-                {parsedVendor.po_number    && <p className="text-green-700">PO: {parsedVendor.po_number}</p>}
+                <p className="font-medium text-green-800">✓ Detected: {parsedVendor.vendor_name || parsedVendor.vendor}</p>
+                {parsedVendor.po_number && <p className="text-green-700">PO: {parsedVendor.po_number}</p>}
                 {parsedVendor.period_start && <p className="text-green-700">Period: {parsedVendor.period_start} → {parsedVendor.period_end}</p>}
-                {parsedVendor.sku          && <p className="text-green-700">SKU: {parsedVendor.sku}</p>}
                 {(parsedVendor.bank_iban || parsedVendor.bank_account) && (
                   <div className="mt-2 border-t border-green-200 pt-2 space-y-0.5">
                     <p className="font-medium text-green-800">Remittance</p>
-                    {parsedVendor.bank_name    && <p className="text-green-700">Bank: {parsedVendor.bank_name}</p>}
+                    {parsedVendor.bank_name && <p className="text-green-700">Bank: {parsedVendor.bank_name}</p>}
                     {parsedVendor.bank_account && <p className="text-green-700">Account: {parsedVendor.bank_account}</p>}
-                    {parsedVendor.bank_iban    && <p className="text-green-700">IBAN: {parsedVendor.bank_iban}</p>}
-                    {parsedVendor.bank_swift   && <p className="text-green-700">Swift: {parsedVendor.bank_swift}</p>}
+                    {parsedVendor.bank_iban && <p className="text-green-700">IBAN: {parsedVendor.bank_iban}</p>}
+                    {parsedVendor.bank_swift && <p className="text-green-700">Swift: {parsedVendor.bank_swift}</p>}
                     {parsedVendor.bank_routing && <p className="text-green-700">Routing: {parsedVendor.bank_routing}</p>}
-                    {parsedVendor.bank_fein    && <p className="text-green-700">FEIN: {parsedVendor.bank_fein}</p>}
-                    {parsedVendor.bank_email   && <p className="text-green-700">Email: {parsedVendor.bank_email}</p>}
                   </div>
                 )}
                 {parsedVendor.missing?.length > 0 && (
@@ -305,26 +283,31 @@ export default function InvoicesPage() {
 
             <div className="grid grid-cols-2 gap-4">
               <Input label="Invoice #" value={form.invoice_number} onChange={set('invoice_number')} required placeholder="INV-001" />
-              <Select label="Customer" value={form.customer_id} onChange={set('customer_id')} required>
+              <Select label="Customer" value={form.customer_id} onChange={set('customer_id')}>
                 <option value="">Select customer</option>
                 {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
               </Select>
-              <Input label="Amount" type="number" step="0.01" value={form.amount} onChange={set('amount')} required />
+              <Input label="Subtotal" type="number" step="0.01" value={form.subtotal} onChange={set('subtotal')} placeholder="0.00" />
+              <Input label="Tax" type="number" step="0.01" value={form.tax} onChange={set('tax')} placeholder="0.00" />
+              <Input label="Total" type="number" step="0.01" value={form.total} onChange={set('total')} required placeholder="0.00" />
               <Select label="Currency" value={form.currency} onChange={set('currency')}>
                 {['USD', 'EUR', 'GBP', 'AED'].map(c => <option key={c}>{c}</option>)}
               </Select>
-              <Input label="Issue Date" type="date" value={form.issue_date} onChange={set('issue_date')} required />
+              <Input label="Invoice Date" type="date" value={form.invoice_date} onChange={set('invoice_date')} required />
               <Input label="Due Date" type="date" value={form.due_date} onChange={set('due_date')} required />
             </div>
-            <Input label="Description" value={form.description} onChange={set('description')} placeholder="Optional" />
+
+            <Input label="Notes" value={form.notes} onChange={set('notes')} placeholder="Optional" />
 
             <div className="flex justify-end gap-3 pt-2">
-              <Button variant="secondary" onClick={() => { setShowModal(false); setParsedVendor(null); }}>Cancel</Button>
+              <Button variant="secondary" type="button" onClick={() => { setShowModal(false); setParsedVendor(null); }}>Cancel</Button>
               <Button type="submit">Create Invoice</Button>
             </div>
+
           </form>
         </Modal>
       )}
     </div>
   );
 }
+
