@@ -18,6 +18,15 @@ const STATUS_COLORS = {
   cancelled: 'bg-gray-100 text-gray-500',
 };
 
+const CURRENCY_SYMBOLS = {
+  USD: '$',
+  EUR: '€',
+  GBP: '£',
+  AED: 'AED ',
+  INR: '₹',
+  SAR: 'SAR ',
+};
+
 const EMPTY_FORM = {
   invoice_number: '',
   customer_id: '',
@@ -34,6 +43,10 @@ const DEFAULT_CUSTOMERS = [
   { id: 1, name: 'Qrestik Technologies L.L.C' },
   { id: 2, name: 'Infinitum Global' },
 ];
+
+function currencySymbol(code) {
+  return CURRENCY_SYMBOLS[code] || `${code} `;
+}
 
 function extractErrorMessage(err, fallback = 'Something went wrong') {
   const detail = err?.response?.data?.detail;
@@ -227,8 +240,12 @@ export default function InvoicesPage() {
               {invoices.map(inv => (
                 <tr key={inv.id} className="border-b border-border last:border-0 hover:bg-gray-50">
                   <td className="px-5 py-3 font-medium text-[#111827]">{inv.invoice_number}</td>
-                  <td className="px-5 py-3 text-[#6B7280]">{customers.find(c => c.id === inv.customer_id)?.name || inv.customer_id}</td>
-                  <td className="px-5 py-3">${Number(inv.total).toLocaleString()} {inv.currency}</td>
+                  <td className="px-5 py-3 text-[#6B7280]">
+                    {customers.find(c => c.id === inv.customer_id)?.name || inv.customer_id}
+                  </td>
+                  <td className="px-5 py-3">
+                    {currencySymbol(inv.currency)}{Number(inv.total).toLocaleString()}
+                  </td>
                   <td className="px-5 py-3 text-[#6B7280]">{inv.invoice_date}</td>
                   <td className="px-5 py-3 text-[#6B7280]">{inv.due_date}</td>
                   <td className="px-5 py-3">
@@ -303,11 +320,9 @@ export default function InvoicesPage() {
               <Button variant="secondary" type="button" onClick={() => { setShowModal(false); setParsedVendor(null); }}>Cancel</Button>
               <Button type="submit">Create Invoice</Button>
             </div>
-
           </form>
         </Modal>
       )}
     </div>
   );
 }
-
