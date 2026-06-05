@@ -336,7 +336,7 @@ async def mark_received(
     payment = Payment(
         invoice_id=invoice_id,
         received_date=body.received_date,
-        amount=body.amount,
+        amount=body.total,
         marked_by=current.id,
         notes=body.notes,
     )
