@@ -136,8 +136,8 @@ async def cash_flow_summary(
 
     q = select(Invoice).options(selectinload(Invoice.customer)).where(
         Invoice.currency == currency,
-        Invoice.invoice_date >= period_start,
-        Invoice.invoice_date <= period_end,
+        Invoice.issue_date >= period_start,
+        Invoice.issue_date <= period_end,
     )
     if company_id is not None:
         q = q.where(Invoice.company_id == company_id)
