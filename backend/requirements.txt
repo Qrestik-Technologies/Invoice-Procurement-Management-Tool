@@ -16,3 +16,7 @@ sendgrid
 msal
 python-dotenv
 celery[redis]
+python-docx
+python-multipart
+pytesseract
+pdf2image
