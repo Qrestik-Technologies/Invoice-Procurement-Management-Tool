@@ -328,6 +328,17 @@ async def parse_and_save_invoice(
     # Build invoice
     invoice_number = parse_result.invoice_number or f"INV-{uuid.uuid4().hex[:8].upper()}"
     invoice_date = parse_result.invoice_date or date.today()
+
+    # ── Duplicate check ──────────────────────────────────────────────────────
+    existing = await db.execute(
+        select(Invoice).where(Invoice.invoice_number == invoice_number)
+    )
+    if existing.scalar_one_or_none():
+        raise HTTPException(
+            status_code=409,
+            detail=f"Invoice {invoice_number} already exists. Duplicate upload prevented."
+        )
+    # ────────────────────────────────────────────────────────────────────────
     due_date = invoice_date + timedelta(days=30)
     total = parse_result.total or parse_result.subtotal or 0
 

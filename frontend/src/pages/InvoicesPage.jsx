@@ -271,16 +271,11 @@ export default function InvoicesPage() {
     try {
       const res = await apiClient.post('/invoices/parse-and-save', data, { headers: { 'Content-Type': 'multipart/form-data' } });
       const parsed = res.data.data?.parse_result || {};
-      console.log('Parse result:', parsed);
 
-      const vendorName = parsed.customer_name || parsed.vendor_name || parsed.vendor || '';
+      // Map vendor field directly to org ID
+      const vendorKey = parsed.vendor || '';
+      const orgId = vendorKey === 'infinitum' ? '10' : vendorKey === 'qrestik' ? '11' : '';
       const amountVal = parsed.total ?? parsed.subtotal ?? 0;
-      const ORGS = [{ id: 10, name: 'Infinitum Global' }, { id: 11, name: 'Qrestik Technologies' }];
-      const orgMatch = vendorName
-        ? ORGS.find(c =>
-            vendorName.toLowerCase().includes(c.name.toLowerCase()) ||
-            c.name.toLowerCase().includes(vendorName.toLowerCase()))
-        : null;
 
       setForm(f => ({
         ...f,
@@ -289,16 +284,21 @@ export default function InvoicesPage() {
         tax: parsed.tax != null ? String(parsed.tax) : f.tax,
         amount: amountVal ? String(amountVal) : f.amount,
         currency: parsed.currency || f.currency,
-        issue_date: parsed.invoice_date || f.issue_date,
-        due_date: parsed.due_date || f.due_date,
+        issue_date: parsed.invoice_date ? String(parsed.invoice_date) : f.issue_date,
+        due_date: parsed.due_date ? String(parsed.due_date) : f.due_date,
         notes: parsed.notes || f.notes,
-        organization_id: orgMatch ? String(orgMatch.id) : f.organization_id,
+        organization_id: orgId || f.organization_id,
       }));
       toast.success(parsed.missing_fields?.length ? 'Partial parse — review highlighted fields' : 'Invoice parsed — review and save');
       if (parsed.missing_fields?.length) toast(`Fill manually: ${parsed.missing_fields.join(', ')}`, { icon: '⚠️' });
       load();
     } catch (err) {
-      toast.error(extractErrorMessage(err, 'Upload failed'));
+      const msg = extractErrorMessage(err, 'Upload failed');
+      if (err?.response?.status === 409) {
+        toast.error('Duplicate invoice — this invoice number already exists', { icon: '🚫' });
+      } else {
+        toast.error(msg);
+      }
     } finally {
       setUploadParsing(false);
     }
