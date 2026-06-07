@@ -115,6 +115,28 @@ async def create_invoice(
     inv = Invoice(**payload, company_id=resolved_company, uploaded_by=current_user.id)
     db.add(inv)
     await db.flush()
+
+    # ── Auto-create milestone (MS-01) ────────────────────────────────────────
+    due = inv.due_date or (inv.issue_date + timedelta(days=30) if inv.issue_date else date.today() + timedelta(days=30))
+    milestone = Milestone(
+        invoice_id=inv.id,
+        title=f"Payment due — {inv.invoice_number}",
+        due_date=due,
+        amount=inv.amount,
+        status=MilestoneStatus.pending,
+    )
+    db.add(milestone)
+
+    # ── Auto-create reminders: 7d, 3d, 1d before due (MS-02, MS-05) ─────────
+    for days_before in [7, 3, 1]:
+        reminder_date = due - timedelta(days=days_before)
+        reminder = InvoiceReminder(
+            invoice_id=inv.id,
+            scheduled_at=datetime.combine(reminder_date, datetime.min.time()).replace(tzinfo=timezone.utc),
+        )
+        db.add(reminder)
+    # ─────────────────────────────────────────────────────────────────────────
+
     await write_audit(db, changed_by=current_user.id, entity_type="invoice",
                       entity_id=inv.id, action=AuditAction.created)
     await db.commit()
