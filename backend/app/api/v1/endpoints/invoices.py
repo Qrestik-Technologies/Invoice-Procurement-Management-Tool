@@ -127,14 +127,13 @@ async def create_invoice(
     )
     db.add(milestone)
 
-    # ── Auto-create reminders: 7d, 3d, 1d before due (MS-02, MS-05) ─────────
-    for days_before in [7, 3, 1]:
-        reminder_date = due - timedelta(days=days_before)
-        reminder = InvoiceReminder(
-            invoice_id=inv.id,
-            scheduled_at=datetime.combine(reminder_date, datetime.min.time()).replace(tzinfo=timezone.utc),
-        )
-        db.add(reminder)
+    # ── Auto-create 1 reminder: 3 days before due (MS-02, MS-05) ───────────
+    reminder_date = due - timedelta(days=3)
+    reminder = InvoiceReminder(
+        invoice_id=inv.id,
+        scheduled_at=datetime.combine(reminder_date, datetime.min.time()).replace(tzinfo=timezone.utc),
+    )
+    db.add(reminder)
     # ─────────────────────────────────────────────────────────────────────────
 
     await write_audit(db, changed_by=current_user.id, entity_type="invoice",
