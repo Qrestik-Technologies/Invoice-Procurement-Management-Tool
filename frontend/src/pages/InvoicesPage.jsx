@@ -469,10 +469,8 @@ export default function InvoicesPage() {
                 <Input label="Invoice #" value={form.invoice_number} onChange={set('invoice_number')} required placeholder="INV-001" />
                 <Select label="Organization" value={form.organization_id} onChange={set('organization_id')} required>
                   <option value="">Select organization</option>
-                  {customers.length > 0
-                    ? customers.filter(c => ALLOWED_CUSTOMERS.some(a => c.name.toLowerCase().includes(a))).map(c => <option key={c.id} value={c.id}>{c.name}</option>)
-                    : DEFAULT_CUSTOMERS.map(c => <option key={c.id} value={c.id}>{c.name}</option>)
-                  }
+                  <option value="10">Infinitum Global</option>
+                  <option value="11">Qrestik Technologies</option>
                 </Select>
                 <Input label="Subtotal" type="number" step="0.01" value={form.subtotal} onChange={set('subtotal')} placeholder="0.00" />
                 <Input label="Tax" type="number" step="0.01" value={form.tax} onChange={set('tax')} placeholder="0.00" />
