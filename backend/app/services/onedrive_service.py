@@ -14,14 +14,18 @@ def _get_access_token() -> str | None:
         return None
     try:
         import msal
+        # Use "common" authority to support both personal and org accounts
         app = msal.ConfidentialClientApplication(
             settings.ONEDRIVE_CLIENT_ID,
-            authority=f"https://login.microsoftonline.com/{settings.ONEDRIVE_TENANT_ID}",
+            authority=f"https://login.microsoftonline.com/common",
             client_credential=settings.ONEDRIVE_CLIENT_SECRET,
         )
         result = app.acquire_token_silent(_SCOPE, account=None)
         if not result:
             result = app.acquire_token_for_client(scopes=_SCOPE)
+        if "access_token" not in result:
+            logger.error("MSAL token error: %s", result.get("error_description"))
+            return None
         return result.get("access_token")
     except Exception as exc:
         logger.exception("MSAL token acquisition failed: %s", exc)
@@ -36,8 +40,9 @@ def upload_file_to_onedrive(
     token = _get_access_token()
     if not token:
         return None
-    folder = settings.ONEDRIVE_FOLDER
-    upload_url = f"{_GRAPH_BASE}/drives/{drive_id}/root:/{folder}/{filename}:/content"
+    folder = settings.ONEDRIVE_FOLDER or "Invoices"
+    # Use /me/drive for personal OneDrive
+    upload_url = f"{_GRAPH_BASE}/me/drive/root:/{folder}/{filename}:/content"
     try:
         with httpx.Client(timeout=60) as client:
             resp = client.put(
@@ -48,6 +53,9 @@ def upload_file_to_onedrive(
                 },
                 content=file_bytes,
             )
+            if resp.status_code == 401:
+                logger.error("OneDrive 401 - check permissions: %s", resp.text)
+                return None
             resp.raise_for_status()
             return resp.json()
     except Exception as exc:

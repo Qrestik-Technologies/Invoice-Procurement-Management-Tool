@@ -351,6 +351,7 @@ async def parse_and_save_invoice(
     safe_name = f"{uuid.uuid4().hex}{ext}"
     dest = UPLOAD_DIR / safe_name
     dest.write_bytes(content)
+    content_bytes = content  # save for OneDrive upload
     try:
         parse_result = parse_invoice(str(dest))
     finally:
@@ -358,8 +359,8 @@ async def parse_and_save_invoice(
 
     # Return parse result only — saving happens when user clicks Create Invoice
     invoice_number = parse_result.invoice_number or ""
-    
-    # Duplicate check — warn but don't block
+
+    # Duplicate check
     dup_result = await db.execute(
         select(Invoice.id).where(Invoice.invoice_number == invoice_number).limit(1)
     )
@@ -368,6 +369,20 @@ async def parse_and_save_invoice(
             status_code=409,
             detail=f"Invoice {invoice_number} already exists. Duplicate upload prevented."
         )
+
+    # ── Auto-upload PDF to OneDrive ──────────────────────────────────────────
+    try:
+        od_filename = f"{invoice_number or 'invoice'}_{safe_name}{ext}"
+        od_result = await run_in_threadpool(
+            upload_file_to_onedrive, content_bytes, od_filename
+        )
+        if od_result:
+            logger.info("Uploaded %s to OneDrive: %s", od_filename, od_result.get("webUrl"))
+        else:
+            logger.warning("OneDrive upload skipped or failed for %s", od_filename)
+    except Exception as exc:
+        logger.warning("OneDrive upload error (non-fatal): %s", exc)
+    # ─────────────────────────────────────────────────────────────────────────
 
     return APIResponse(
         data=ParseUploadResponse(document_id=0, parse_result=parse_result),
