@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
-import { Plus, Download, Upload, Loader2 } from 'lucide-react';
+import { Plus, Download, Upload, Loader2, FileText, CheckCircle, AlertCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import apiClient from '../api/client';
 import Button from '../components/ui/Button';
@@ -10,33 +10,23 @@ import { usePageMeta } from '../hooks/usePageMeta';
 import PageHeader from '../components/ui/PageHeader';
 
 const STATUS_COLORS = {
-  draft: 'bg-gray-100 text-gray-600',
-  sent: 'bg-blue-100 text-blue-700',
-  received: 'bg-green-100 text-green-700',
-  paid: 'bg-emerald-100 text-emerald-700',
-  overdue: 'bg-red-100 text-red-700',
-  cancelled: 'bg-gray-100 text-gray-500',
+  draft:      'bg-gray-100 text-gray-600',
+  sent:       'bg-blue-100 text-blue-700',
+  received:   'bg-green-100 text-green-700',
+  paid:       'bg-emerald-100 text-emerald-700',
+  overdue:    'bg-red-100 text-red-700',
+  cancelled:  'bg-gray-100 text-gray-500',
+  dispatched: 'bg-purple-100 text-purple-700',
+  pending:    'bg-yellow-100 text-yellow-700',
 };
 
 const CURRENCY_SYMBOLS = {
-  USD: '$',
-  EUR: '€',
-  GBP: '£',
-  AED: 'AED ',
-  INR: '₹',
-  SAR: 'SAR ',
+  USD: '$', EUR: '€', GBP: '£', AED: 'AED ', INR: '₹', SAR: 'SAR ',
 };
 
 const EMPTY_FORM = {
-  invoice_number: '',
-  customer_id: '',
-  subtotal: '',
-  tax: '',
-  total: '',
-  currency: 'USD',
-  invoice_date: '',
-  due_date: '',
-  notes: '',
+  invoice_number: '', customer_id: '', subtotal: '', tax: '',
+  total: '', currency: 'USD', invoice_date: '', due_date: '', notes: '',
 };
 
 const DEFAULT_CUSTOMERS = [
@@ -44,9 +34,7 @@ const DEFAULT_CUSTOMERS = [
   { id: 2, name: 'Infinitum Global' },
 ];
 
-function currencySymbol(code) {
-  return CURRENCY_SYMBOLS[code] || `${code} `;
-}
+function currencySymbol(code) { return CURRENCY_SYMBOLS[code] || `${code} `; }
 
 function extractErrorMessage(err, fallback = 'Something went wrong') {
   const detail = err?.response?.data?.detail;
@@ -70,6 +58,179 @@ function Modal({ title, onClose, children }) {
   );
 }
 
+// ── Upload & Save Zone ────────────────────────────────────────────────────────
+
+function UploadSaveZone({ onSaved }) {
+  const [state, setState] = useState('idle'); // idle | uploading | success | error
+  const [result, setResult] = useState(null);
+  const [errorMsg, setErrorMsg] = useState('');
+  const [dragging, setDragging] = useState(false);
+  const fileRef = useRef();
+
+  const handleFile = async (file) => {
+    if (!file) return;
+    const ext = file.name.split('.').pop().toLowerCase();
+    if (!['pdf', 'docx', 'doc'].includes(ext)) {
+      toast.error('Only PDF and DOCX files are supported');
+      return;
+    }
+    const data = new FormData();
+    data.append('file', file);
+    setState('uploading');
+    setResult(null);
+    setErrorMsg('');
+    try {
+      const res = await apiClient.post('/invoices/parse-and-save', data, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      const parsed = res.data.data?.parse_result || {};
+      setResult({ ...parsed, document_id: res.data.data?.document_id });
+      setState('success');
+      toast.success('Invoice saved successfully');
+      if (parsed.missing_fields?.length) {
+        toast(`Missing fields: ${parsed.missing_fields.join(', ')}`, { icon: '⚠️' });
+      }
+      onSaved?.();
+    } catch (err) {
+      setErrorMsg(extractErrorMessage(err, 'Upload failed'));
+      setState('error');
+      toast.error(extractErrorMessage(err, 'Upload failed'));
+    } finally {
+      if (fileRef.current) fileRef.current.value = '';
+    }
+  };
+
+  const onDrop = (e) => {
+    e.preventDefault();
+    setDragging(false);
+    handleFile(e.dataTransfer.files[0]);
+  };
+
+  if (state === 'success' && result) {
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-4 py-3">
+          <CheckCircle className="h-4 w-4 text-green-600 shrink-0" />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-green-800">
+              {result.vendor_name || result.vendor || 'Invoice'} saved
+            </p>
+            <p className="text-xs text-green-700">Document ID: {result.document_id}</p>
+          </div>
+        </div>
+
+        <div className="rounded-lg border border-border bg-gray-50 px-4 py-3 text-xs space-y-1">
+          {result.invoice_number && <p><span className="text-[#6B7280]">Invoice #:</span> <span className="font-medium">{result.invoice_number}</span></p>}
+          {result.invoice_date && <p><span className="text-[#6B7280]">Date:</span> <span className="font-medium">{result.invoice_date}</span></p>}
+          {result.total != null && <p><span className="text-[#6B7280]">Total:</span> <span className="font-medium">{result.currency || 'USD'} {Number(result.total).toLocaleString()}</span></p>}
+          {result.customer_name && <p><span className="text-[#6B7280]">Customer:</span> <span className="font-medium">{result.customer_name}</span></p>}
+        </div>
+
+        {result.line_items?.length > 0 && (
+          <div>
+            <p className="text-xs font-medium text-[#6B7280] mb-1">Line items</p>
+            <table className="w-full text-xs border border-border rounded-lg overflow-hidden">
+              <thead>
+                <tr className="bg-gray-50 border-b border-border text-[#6B7280]">
+                  <th className="px-3 py-2 text-left">Description</th>
+                  <th className="px-3 py-2 text-right">Qty</th>
+                  <th className="px-3 py-2 text-right">Rate</th>
+                  <th className="px-3 py-2 text-right">Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                {result.line_items.map((li, i) => (
+                  <tr key={i} className="border-b border-border last:border-0">
+                    <td className="px-3 py-2">{li.description}</td>
+                    <td className="px-3 py-2 text-right">{li.qty}</td>
+                    <td className="px-3 py-2 text-right">{li.rate}</td>
+                    <td className="px-3 py-2 text-right">{li.amount}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {result.missing_fields?.length > 0 && (
+          <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+            <AlertCircle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+            <p className="text-xs text-amber-700">
+              Missing fields — fill manually: <span className="font-medium">{result.missing_fields.join(', ')}</span>
+            </p>
+          </div>
+        )}
+
+        <button
+          onClick={() => { setState('idle'); setResult(null); }}
+          className="text-xs text-primary hover:underline"
+        >
+          Upload another
+        </button>
+      </div>
+    );
+  }
+
+  if (state === 'error') {
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3">
+          <AlertCircle className="h-4 w-4 text-red-600 shrink-0" />
+          <p className="text-sm text-red-700">{errorMsg}</p>
+        </div>
+        <button
+          onClick={() => { setState('idle'); setErrorMsg(''); }}
+          className="text-xs text-primary hover:underline"
+        >
+          Try again
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+      onDragLeave={() => setDragging(false)}
+      onDrop={onDrop}
+      className={`rounded-xl border-2 border-dashed transition-colors ${
+        dragging ? 'border-primary bg-primary/5' : 'border-border bg-gray-50'
+      } flex flex-col items-center justify-center gap-3 px-6 py-12 text-center`}
+    >
+      {state === 'uploading' ? (
+        <>
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          <p className="text-sm text-[#6B7280]">Parsing and saving invoice…</p>
+        </>
+      ) : (
+        <>
+          <div className="rounded-full bg-white border border-border p-3">
+            <FileText className="h-6 w-6 text-[#6B7280]" />
+          </div>
+          <div>
+            <p className="text-sm font-medium text-[#111827]">Drop your invoice here</p>
+            <p className="text-xs text-[#9CA3AF] mt-0.5">PDF or DOCX, up to 20MB</p>
+          </div>
+          <label className="cursor-pointer">
+            <span className="rounded-md bg-primary px-4 py-2 text-xs font-medium text-white hover:bg-primary/90 transition-colors">
+              Browse file
+            </span>
+            <input
+              ref={fileRef}
+              type="file"
+              accept=".pdf,.docx,.doc"
+              className="hidden"
+              onChange={(e) => handleFile(e.target.files[0])}
+            />
+          </label>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ── Page ──────────────────────────────────────────────────────────────────────
+
 export default function InvoicesPage() {
   const { user } = useAuth();
   const { organizationId } = useOrganization();
@@ -77,11 +238,9 @@ export default function InvoicesPage() {
   const [invoices, setInvoices] = useState([]);
   const [customers, setCustomers] = useState(DEFAULT_CUSTOMERS);
   const [showModal, setShowModal] = useState(false);
+  const [showUploadModal, setShowUploadModal] = useState(false);
   const [statusFilter, setStatusFilter] = useState('');
   const [form, setForm] = useState(EMPTY_FORM);
-  const [parsing, setParsing] = useState(false);
-  const [parsedVendor, setParsedVendor] = useState(null);
-  const fileRef = useRef();
 
   const load = () => {
     const params = statusFilter ? `?status=${statusFilter}` : '';
@@ -97,58 +256,6 @@ export default function InvoicesPage() {
   }, [statusFilter, organizationId]);
 
   const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }));
-
-  const handlePdfUpload = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    if (!file.name.endsWith('.pdf')) { toast.error('Please upload a PDF file'); return; }
-    const data = new FormData();
-    data.append('file', file);
-    setParsing(true);
-    setParsedVendor(null);
-    try {
-      const res = await apiClient.post('/invoices/parse', data, { headers: { 'Content-Type': 'multipart/form-data' } });
-      const f = res.data.data || res.data;
-      setForm(prev => ({
-        ...prev,
-        invoice_number: f.invoice_number || prev.invoice_number,
-        subtotal: f.subtotal != null ? String(f.subtotal) : prev.subtotal,
-        tax: f.tax != null ? String(f.tax) : prev.tax,
-        total: f.total != null ? String(f.total) : prev.total,
-        currency: f.currency || prev.currency,
-        invoice_date: f.invoice_date ? String(f.invoice_date) : prev.invoice_date,
-        notes: f.vendor_name ? `${f.vendor_name}${f.period_start ? ` — ${f.period_start} to ${f.period_end}` : ''}` : prev.notes,
-      }));
-      const detectedName = (f.vendor_name || f.vendor || '').toLowerCase().trim();
-      if (detectedName) {
-        const match = customers.find(c => { const n = c.name.toLowerCase(); return detectedName.includes(n) || n.includes(detectedName); });
-        if (match) setForm(prev => ({ ...prev, customer_id: String(match.id) }));
-      }
-      setParsedVendor({
-        vendor: f.vendor,
-        vendor_name: f.vendor_name,
-        po_number: f.po_number,
-        bank_iban: f.bank_iban,
-        bank_swift: f.bank_swift,
-        bank_routing: f.bank_routing,
-        bank_account: f.bank_account_number,
-        bank_name: f.bank_name,
-        bank_fein: f.bank_fein,
-        bank_email: f.bank_email,
-        period_start: f.period_start,
-        period_end: f.period_end,
-        sku: f.sku,
-        missing: f.missing_fields || [],
-      });
-      toast.success(`${f.vendor_name || 'Invoice'} parsed successfully`);
-      if (f.missing_fields?.length) toast(`Please fill in: ${f.missing_fields.join(', ')}`, { icon: '⚠️' });
-    } catch (err) {
-      toast.error(extractErrorMessage(err, 'Could not parse PDF'));
-    } finally {
-      setParsing(false);
-      if (fileRef.current) fileRef.current.value = '';
-    }
-  };
 
   const handleCreate = async (e) => {
     e.preventDefault();
@@ -167,7 +274,6 @@ export default function InvoicesPage() {
       toast.success('Invoice created');
       setShowModal(false);
       setForm(EMPTY_FORM);
-      setParsedVendor(null);
       load();
     } catch (err) {
       toast.error(extractErrorMessage(err, 'Failed to create invoice'));
@@ -200,16 +306,21 @@ export default function InvoicesPage() {
               <Download className="h-4 w-4" /> Export
             </Button>
             {canEdit && (
-              <Button size="sm" onClick={() => { setForm(EMPTY_FORM); setParsedVendor(null); setShowModal(true); }}>
-                <Plus className="h-4 w-4" /> New Invoice
-              </Button>
+              <>
+                <Button variant="secondary" size="sm" onClick={() => setShowUploadModal(true)}>
+                  <Upload className="h-4 w-4" /> Upload Invoice
+                </Button>
+                <Button size="sm" onClick={() => { setForm(EMPTY_FORM); setShowModal(true); }}>
+                  <Plus className="h-4 w-4" /> New Invoice
+                </Button>
+              </>
             )}
           </div>
         )}
       />
 
-      <div className="mb-4 flex gap-3">
-        {['', 'draft', 'sent', 'received', 'overdue', 'paid', 'cancelled'].map(s => (
+      <div className="mb-4 flex gap-3 flex-wrap">
+        {['', 'draft', 'sent', 'received', 'overdue', 'paid', 'dispatched', 'pending', 'cancelled'].map(s => (
           <button
             key={s}
             onClick={() => setStatusFilter(s)}
@@ -226,7 +337,23 @@ export default function InvoicesPage() {
 
       <div className="rounded-xl border border-border bg-white shadow-sm overflow-hidden">
         {invoices.length === 0 ? (
-          <p className="px-6 py-12 text-center text-sm text-[#9CA3AF]">No invoices found</p>
+          <div className="flex flex-col items-center justify-center gap-3 px-6 py-16 text-center">
+            <div className="rounded-full bg-gray-100 p-4">
+              <FileText className="h-7 w-7 text-[#9CA3AF]" />
+            </div>
+            <div>
+              <p className="text-sm font-medium text-[#111827]">No invoices found</p>
+              <p className="text-xs text-[#9CA3AF] mt-1">Upload your first invoice to get started</p>
+            </div>
+            {canEdit && (
+              <button
+                onClick={() => setShowUploadModal(true)}
+                className="mt-1 rounded-md bg-primary px-4 py-2 text-xs font-medium text-white hover:bg-primary/90 transition-colors"
+              >
+                Upload your first invoice
+              </button>
+            )}
+          </div>
         ) : (
           <table className="w-full text-sm">
             <thead>
@@ -241,15 +368,16 @@ export default function InvoicesPage() {
                 <tr key={inv.id} className="border-b border-border last:border-0 hover:bg-gray-50">
                   <td className="px-5 py-3 font-medium text-[#111827]">{inv.invoice_number}</td>
                   <td className="px-5 py-3 text-[#6B7280]">
-                    {customers.find(c => c.id === inv.customer_id)?.name || inv.customer_id}
+                    {customers.find(c => c.id === inv.customer_id)?.name || '—'}
                   </td>
-                  <td className="px-5 py-3">
-                      {currencySymbol(inv.currency)}{Number(inv.total).toLocaleString()}
+                  <td className="px-5 py-3 text-[#6B7280]">
+                    <span className="text-xs text-[#9CA3AF] mr-0.5">{currencySymbol(inv.currency)}</span>
+                    {Number(inv.total ?? 0).toLocaleString()}
                   </td>
-                  <td className="px-5 py-3 text-[#6B7280]">{inv.invoice_date}</td>
-                  <td className="px-5 py-3 text-[#6B7280]">{inv.due_date}</td>
+                  <td className="px-5 py-3 text-[#6B7280]">{inv.invoice_date || '—'}</td>
+                  <td className="px-5 py-3 text-[#6B7280]">{inv.due_date || '—'}</td>
                   <td className="px-5 py-3">
-                    <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${STATUS_COLORS[inv.status] || ''}`}>
+                    <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${STATUS_COLORS[inv.status] || 'bg-gray-100 text-gray-600'}`}>
                       {inv.status}
                     </span>
                   </td>
@@ -260,44 +388,17 @@ export default function InvoicesPage() {
         )}
       </div>
 
+      {/* Upload Invoice Modal */}
+      {showUploadModal && (
+        <Modal title="Upload Invoice" onClose={() => setShowUploadModal(false)}>
+          <UploadSaveZone onSaved={() => { load(); }} />
+        </Modal>
+      )}
+
+      {/* New Invoice Modal */}
       {showModal && (
-        <Modal title="New Invoice" onClose={() => { setShowModal(false); setParsedVendor(null); }}>
+        <Modal title="New Invoice" onClose={() => { setShowModal(false); }}>
           <form onSubmit={handleCreate} className="space-y-4">
-
-            <div className="flex items-center gap-3 rounded-lg border border-dashed border-border bg-gray-50 px-4 py-3">
-              <Upload className="h-4 w-4 shrink-0 text-[#9CA3AF]" />
-              <span className="text-xs text-[#6B7280]">Auto-fill from PDF</span>
-              <label className="ml-auto cursor-pointer">
-                <span className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-white hover:bg-primary/90 transition-colors">
-                  {parsing
-                    ? <span className="flex items-center gap-1.5"><Loader2 className="h-3 w-3 animate-spin" /> Parsing…</span>
-                    : 'Upload PDF'}
-                </span>
-                <input ref={fileRef} type="file" accept=".pdf" className="hidden" onChange={handlePdfUpload} disabled={parsing} />
-              </label>
-            </div>
-
-            {parsedVendor && (
-              <div className="rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-xs space-y-1">
-                <p className="font-medium text-green-800">✓ Detected: {parsedVendor.vendor_name || parsedVendor.vendor}</p>
-                {parsedVendor.po_number && <p className="text-green-700">PO: {parsedVendor.po_number}</p>}
-                {parsedVendor.period_start && <p className="text-green-700">Period: {parsedVendor.period_start} → {parsedVendor.period_end}</p>}
-                {(parsedVendor.bank_iban || parsedVendor.bank_account) && (
-                  <div className="mt-2 border-t border-green-200 pt-2 space-y-0.5">
-                    <p className="font-medium text-green-800">Remittance</p>
-                    {parsedVendor.bank_name && <p className="text-green-700">Bank: {parsedVendor.bank_name}</p>}
-                    {parsedVendor.bank_account && <p className="text-green-700">Account: {parsedVendor.bank_account}</p>}
-                    {parsedVendor.bank_iban && <p className="text-green-700">IBAN: {parsedVendor.bank_iban}</p>}
-                    {parsedVendor.bank_swift && <p className="text-green-700">Swift: {parsedVendor.bank_swift}</p>}
-                    {parsedVendor.bank_routing && <p className="text-green-700">Routing: {parsedVendor.bank_routing}</p>}
-                  </div>
-                )}
-                {parsedVendor.missing?.length > 0 && (
-                  <p className="text-amber-600 mt-1">⚠ Fill manually: {parsedVendor.missing.join(', ')}</p>
-                )}
-              </div>
-            )}
-
             <div className="grid grid-cols-2 gap-4">
               <Input label="Invoice #" value={form.invoice_number} onChange={set('invoice_number')} required placeholder="INV-001" />
               <Select label="Customer" value={form.customer_id} onChange={set('customer_id')}>
@@ -313,11 +414,9 @@ export default function InvoicesPage() {
               <Input label="Invoice Date" type="date" value={form.invoice_date} onChange={set('invoice_date')} required />
               <Input label="Due Date" type="date" value={form.due_date} onChange={set('due_date')} required />
             </div>
-
             <Input label="Notes" value={form.notes} onChange={set('notes')} placeholder="Optional" />
-
             <div className="flex justify-end gap-3 pt-2">
-              <Button variant="secondary" type="button" onClick={() => { setShowModal(false); setParsedVendor(null); }}>Cancel</Button>
+              <Button variant="secondary" type="button" onClick={() => setShowModal(false)}>Cancel</Button>
               <Button type="submit">Create Invoice</Button>
             </div>
           </form>
