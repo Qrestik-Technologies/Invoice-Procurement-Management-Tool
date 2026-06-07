@@ -255,7 +255,7 @@ export default function InvoicesPage() {
     if (!organizationId) return;
     load();
     apiClient.get('/customers')
-      .then(r => { const d = (r.data.data || []).filter(c => ALLOWED_CUSTOMERS.some(a => c.name.toLowerCase().includes(a))); setCustomers(d.length > 0 ? d : DEFAULT_CUSTOMERS); })
+      .then(r => { const d = r.data.data || []; setCustomers(d.length > 0 ? d : DEFAULT_CUSTOMERS); })
       .catch(() => setCustomers(DEFAULT_CUSTOMERS));
   }, [statusFilter, organizationId]);
 
@@ -347,10 +347,7 @@ export default function InvoicesPage() {
             </Button>
             {canEdit && (
               <>
-                <Button variant="secondary" size="sm" onClick={() => setShowUploadModal(true)}>
-                  <Upload className="h-4 w-4" /> Upload Invoice
-                </Button>
-                <Button size="sm" onClick={() => { setForm(EMPTY_FORM); setShowModal(true); }}>
+<Button size="sm" onClick={() => { setForm(EMPTY_FORM); setShowModal(true); }}>
                   <Plus className="h-4 w-4" /> New Invoice
                 </Button>
               </>
@@ -408,7 +405,7 @@ export default function InvoicesPage() {
                 <tr key={inv.id} className="border-b border-border last:border-0 hover:bg-gray-50">
                   <td className="px-5 py-3 font-medium text-[#111827]">{inv.invoice_number}</td>
                   <td className="px-5 py-3 text-[#6B7280]">
-                    {customers.find(c => c.id === inv.customer_id)?.name || '—'}
+                    {customers.find(c => c.id === inv.customer_id)?.name || inv.customer_name || '—'}
                   </td>
                   <td className="px-5 py-3 text-[#6B7280]">
                     <span className="text-xs text-[#9CA3AF] mr-0.5">{currencySymbol(inv.currency)}</span>
@@ -470,7 +467,7 @@ export default function InvoicesPage() {
                 <Input label="Invoice #" value={form.invoice_number} onChange={set('invoice_number')} required placeholder="INV-001" />
                 <Select label="Customer" value={form.customer_id} onChange={set('customer_id')}>
                   <option value="">Select customer</option>
-                  {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  {customers.filter(c => ALLOWED_CUSTOMERS.some(a => c.name.toLowerCase().includes(a))).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </Select>
                 <Input label="Subtotal" type="number" step="0.01" value={form.subtotal} onChange={set('subtotal')} placeholder="0.00" />
                 <Input label="Tax" type="number" step="0.01" value={form.tax} onChange={set('tax')} placeholder="0.00" />
