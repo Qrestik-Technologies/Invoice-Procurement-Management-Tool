@@ -1,11 +1,12 @@
 from calendar import monthrange
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Annotated, Optional
 
 import redis.asyncio as aioredis
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
+from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.company_scope import get_company_scope
@@ -123,8 +124,6 @@ async def trigger_reminder(
 # ── Cash flow router ──────────────────────────────────────────────────────────
 
 cashflow_router = APIRouter(prefix="/cash-flow", tags=["cash-flow"])
-
-
 @cashflow_router.get("/summary", response_model=APIResponse[CashFlowSummary])
 async def cash_flow_summary(
     db: Annotated[AsyncSession, Depends(get_db)],
@@ -138,20 +137,32 @@ async def cash_flow_summary(
     period_start = start or date(today.year, today.month, 1)
     period_end = end or today
 
-    q = select(Invoice).where(
+    q = select(Invoice).options(selectinload(Invoice.customer)).where(
         Invoice.currency == currency,
-        Invoice.issue_date >= period_start,
-        Invoice.issue_date <= period_end,
+        Invoice.invoice_date >= period_start,
+        Invoice.invoice_date <= period_end,
     )
     if company_id is not None:
         q = q.where(Invoice.company_id == company_id)
     result = await db.execute(q)
     invoices = result.scalars().all()
 
-    total_invoiced = sum((i.amount for i in invoices), Decimal("0"))
+    total_invoiced = sum((i.total for i in invoices), Decimal("0"))
     received = [i for i in invoices if i.status in (InvoiceStatus.received, InvoiceStatus.paid)]
-    total_received = sum((i.amount for i in received), Decimal("0"))
+    total_received = sum((i.total for i in received), Decimal("0"))
     total_outstanding = total_invoiced - total_received
+
+    invoice_rows = [
+        {
+            "id": i.id,
+            "customer": i.customer.name if i.customer else "—",
+            "amount": float(i.total),
+            "due_date": str(i.due_date),
+            "status": i.status.value if hasattr(i.status, "value") else i.status,
+        }
+        for i in invoices
+        if i.status not in (InvoiceStatus.received, InvoiceStatus.paid)
+    ]
 
     return APIResponse(data=CashFlowSummary(
         period_start=period_start,
@@ -163,57 +174,10 @@ async def cash_flow_summary(
         paid_count=sum(1 for i in invoices if i.status == InvoiceStatus.paid),
         draft_count=sum(1 for i in invoices if i.status == InvoiceStatus.draft),
         currency=currency,
+        invoices=invoice_rows,
     ))
 
 
-@cashflow_router.get("/monthly", response_model=APIResponse[list[dict]])
-async def cash_flow_monthly(
-    db: Annotated[AsyncSession, Depends(get_db)],
-    _=Depends(require_any_role),
-    company_id: Annotated[int | None, Depends(get_company_scope)] = None,
-    months: int = Query(6, ge=1, le=24),
-    currency: str = Query("USD"),
-):
-    today = date.today()
-    result_months = []
-
-    for i in range(months - 1, -1, -1):
-        year = today.year
-        month = today.month - i
-        while month <= 0:
-            month += 12
-            year -= 1
-
-        month_start = date(year, month, 1)
-        month_end = date(year, month, monthrange(year, month)[1])
-        label = month_start.strftime("%b %Y")
-
-        inv_q = select(func.coalesce(func.sum(Invoice.total), 0)).where(
-            Invoice.currency == currency,
-            Invoice.invoice_date >= month_start,
-            Invoice.invoice_date <= month_end,
-        )
-        if company_id is not None:
-            inv_q = inv_q.where(Invoice.company_id == company_id)
-
-        pay_q = select(func.coalesce(func.sum(Payment.amount), 0)).where(
-            Payment.received_date >= month_start,
-            Payment.received_date <= month_end,
-        )
-        if company_id is not None:
-            pay_q = pay_q.join(Invoice).where(Invoice.company_id == company_id)
-
-        inv_total = float((await db.execute(inv_q)).scalar() or 0)
-        pay_total = float((await db.execute(pay_q)).scalar() or 0)
-
-        result_months.append({
-            "month": label,
-            "invoiced": inv_total,
-            "received": pay_total,
-            "outstanding": max(inv_total - pay_total, 0),
-        })
-
-    return APIResponse(data=result_months)
 
 
 # ── Audit log router ──────────────────────────────────────────────────────────
