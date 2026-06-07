@@ -1,4 +1,6 @@
 from app.models.documents import Document
+from app.models.inovice_remainder import InvoiceReminder
+from app.models.inovice_remainder import InvoiceReminder
 from app.models.domain import (
     AuditLog,
     Customer,
