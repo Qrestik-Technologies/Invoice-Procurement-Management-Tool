@@ -241,6 +241,8 @@ export default function InvoicesPage() {
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [statusFilter, setStatusFilter] = useState('');
   const [form, setForm] = useState(EMPTY_FORM);
+  const [uploadParsing, setUploadParsing] = useState(false);
+  const [newInvDragging, setNewInvDragging] = useState(false);
 
   const load = () => {
     const params = statusFilter ? `?status=${statusFilter}` : '';
@@ -256,6 +258,42 @@ export default function InvoicesPage() {
   }, [statusFilter, organizationId]);
 
   const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }));
+
+  const handleNewInvFile = async (file) => {
+    if (!file) return;
+    const ext = file.name.split('.').pop().toLowerCase();
+    if (!['pdf', 'docx', 'doc'].includes(ext)) { toast.error('Only PDF and DOCX files are supported'); return; }
+    const data = new FormData();
+    data.append('file', file);
+    setUploadParsing(true);
+    try {
+      const res = await apiClient.post('/invoices/parse-and-save', data, { headers: { 'Content-Type': 'multipart/form-data' } });
+      const parsed = res.data.data?.parse_result || {};
+      setForm(f => ({
+        ...f,
+        invoice_number: parsed.invoice_number || f.invoice_number,
+        subtotal: parsed.subtotal != null ? String(parsed.subtotal) : f.subtotal,
+        tax: parsed.tax != null ? String(parsed.tax) : f.tax,
+        total: parsed.total != null ? String(parsed.total) : f.total,
+        currency: parsed.currency || f.currency,
+        invoice_date: parsed.invoice_date || f.invoice_date,
+        due_date: parsed.due_date || f.due_date,
+        notes: parsed.notes || f.notes,
+        customer_id: (() => {
+          if (!parsed.customer_name) return f.customer_id;
+          const match = customers.find(c => c.name.toLowerCase().includes(parsed.customer_name.toLowerCase()));
+          return match ? String(match.id) : f.customer_id;
+        })(),
+      }));
+      toast.success(parsed.missing_fields?.length ? 'Partial parse — review highlighted fields' : 'Invoice parsed — review and save');
+      if (parsed.missing_fields?.length) toast(`Fill manually: ${parsed.missing_fields.join(', ')}`, { icon: '⚠️' });
+      load();
+    } catch (err) {
+      toast.error(extractErrorMessage(err, 'Upload failed'));
+    } finally {
+      setUploadParsing(false);
+    }
+  };
 
   const handleCreate = async (e) => {
     e.preventDefault();
@@ -397,29 +435,57 @@ export default function InvoicesPage() {
 
       {/* New Invoice Modal */}
       {showModal && (
-        <Modal title="New Invoice" onClose={() => { setShowModal(false); }}>
-          <form onSubmit={handleCreate} className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <Input label="Invoice #" value={form.invoice_number} onChange={set('invoice_number')} required placeholder="INV-001" />
-              <Select label="Customer" value={form.customer_id} onChange={set('customer_id')}>
-                <option value="">Select customer</option>
-                {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </Select>
-              <Input label="Subtotal" type="number" step="0.01" value={form.subtotal} onChange={set('subtotal')} placeholder="0.00" />
-              <Input label="Tax" type="number" step="0.01" value={form.tax} onChange={set('tax')} placeholder="0.00" />
-              <Input label="Total" type="number" step="0.01" value={form.total} onChange={set('total')} required placeholder="0.00" />
-              <Select label="Currency" value={form.currency} onChange={set('currency')}>
-                {['USD', 'EUR', 'GBP', 'AED'].map(c => <option key={c}>{c}</option>)}
-              </Select>
-              <Input label="Invoice Date" type="date" value={form.invoice_date} onChange={set('invoice_date')} required />
-              <Input label="Due Date" type="date" value={form.due_date} onChange={set('due_date')} required />
+        <Modal title="New Invoice" onClose={() => { setShowModal(false); setUploadParsing(false); }}>
+          <div className="space-y-4">
+            {/* Upload zone to auto-fill */}
+            <div
+              onDragOver={(e) => { e.preventDefault(); setNewInvDragging(true); }}
+              onDragLeave={() => setNewInvDragging(false)}
+              onDrop={(e) => { e.preventDefault(); setNewInvDragging(false); handleNewInvFile(e.dataTransfer.files[0]); }}
+              className={`rounded-xl border-2 border-dashed transition-colors ${newInvDragging ? 'border-primary bg-primary/5' : 'border-border bg-gray-50'} flex flex-col items-center justify-center gap-2 px-4 py-5 text-center`}
+            >
+              {uploadParsing ? (
+                <>
+                  <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                  <p className="text-xs text-[#6B7280]">Parsing invoice…</p>
+                </>
+              ) : (
+                <>
+                  <FileText className="h-5 w-5 text-[#9CA3AF]" />
+                  <p className="text-xs text-[#6B7280]">Drop a PDF/DOCX to auto-fill fields below</p>
+                  <label className="cursor-pointer">
+                    <span className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-white hover:bg-primary/90 transition-colors">
+                      Browse file
+                    </span>
+                    <input type="file" accept=".pdf,.docx,.doc" className="hidden" onChange={(e) => handleNewInvFile(e.target.files[0])} />
+                  </label>
+                </>
+              )}
             </div>
-            <Input label="Notes" value={form.notes} onChange={set('notes')} placeholder="Optional" />
-            <div className="flex justify-end gap-3 pt-2">
-              <Button variant="secondary" type="button" onClick={() => setShowModal(false)}>Cancel</Button>
-              <Button type="submit">Create Invoice</Button>
-            </div>
-          </form>
+
+            <form onSubmit={handleCreate} className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <Input label="Invoice #" value={form.invoice_number} onChange={set('invoice_number')} required placeholder="INV-001" />
+                <Select label="Customer" value={form.customer_id} onChange={set('customer_id')}>
+                  <option value="">Select customer</option>
+                  {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </Select>
+                <Input label="Subtotal" type="number" step="0.01" value={form.subtotal} onChange={set('subtotal')} placeholder="0.00" />
+                <Input label="Tax" type="number" step="0.01" value={form.tax} onChange={set('tax')} placeholder="0.00" />
+                <Input label="Total" type="number" step="0.01" value={form.total} onChange={set('total')} required placeholder="0.00" />
+                <Select label="Currency" value={form.currency} onChange={set('currency')}>
+                  {['USD', 'EUR', 'GBP', 'AED'].map(c => <option key={c}>{c}</option>)}
+                </Select>
+                <Input label="Invoice Date" type="date" value={form.invoice_date} onChange={set('invoice_date')} required />
+                <Input label="Due Date" type="date" value={form.due_date} onChange={set('due_date')} required />
+              </div>
+              <Input label="Notes" value={form.notes} onChange={set('notes')} placeholder="Optional" />
+              <div className="flex justify-end gap-3 pt-2">
+                <Button variant="secondary" type="button" onClick={() => { setShowModal(false); setUploadParsing(false); }}>Cancel</Button>
+                <Button type="submit">Create Invoice</Button>
+              </div>
+            </form>
+          </div>
         </Modal>
       )}
     </div>
