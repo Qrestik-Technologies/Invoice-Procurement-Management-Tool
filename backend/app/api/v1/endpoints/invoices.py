@@ -330,10 +330,10 @@ async def parse_and_save_invoice(
     invoice_date = parse_result.invoice_date or date.today()
 
     # ── Duplicate check ──────────────────────────────────────────────────────
-    existing = await db.execute(
-        select(Invoice).where(Invoice.invoice_number == invoice_number)
+    dup_result = await db.execute(
+        select(Invoice.id).where(Invoice.invoice_number == invoice_number).limit(1)
     )
-    if existing.scalar_one_or_none():
+    if dup_result.scalar():
         raise HTTPException(
             status_code=409,
             detail=f"Invoice {invoice_number} already exists. Duplicate upload prevented."
