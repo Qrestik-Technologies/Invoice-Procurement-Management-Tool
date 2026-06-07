@@ -69,6 +69,8 @@ class Invoice(Base):
     milestones = relationship("Milestone", back_populates="invoice", cascade="all, delete-orphan")
     payments = relationship("Payment", back_populates="invoice", cascade="all, delete-orphan")
     reminders = relationship("Reminder", back_populates="invoice", cascade="all, delete-orphan")
+    documents = relationship("Document", back_populates="linked_invoice")
+    invoice_reminders = relationship("InvoiceReminder", back_populates="invoice")
 
 
 class Milestone(Base):

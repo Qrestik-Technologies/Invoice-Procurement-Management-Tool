@@ -16,4 +16,4 @@ class InvoiceReminder(Base):
     message: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
-    invoice = relationship("Invoice", back_populates="reminders")
+    invoice = relationship("Invoice", back_populates="invoice_reminders")
