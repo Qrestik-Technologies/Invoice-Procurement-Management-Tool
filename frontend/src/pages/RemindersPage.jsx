@@ -37,7 +37,7 @@ export default function RemindersPage() {
   const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }));
   const canEdit = user?.role === 'admin' || user?.role === 'entry';
 
-  const load = () => apiClient.get('/reminders').then(r => setReminders(r.data.data || [])).catch(() => setReminders([]));
+  const load = () => apiClient.get('/invoices/reminders/scheduled').then(r => setReminders(r.data.data || [])).catch(() => setReminders([]));
 
   useEffect(() => {
     if (!organizationId) return;

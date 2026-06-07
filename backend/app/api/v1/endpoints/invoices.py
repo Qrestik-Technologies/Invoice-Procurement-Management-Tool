@@ -294,6 +294,35 @@ async def parse_invoice_file(
 
 # ── Parse and save ────────────────────────────────────────────────────────────
 
+@router.get("/reminders/scheduled", response_model=APIResponse[list])
+async def list_scheduled_reminders(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user=Depends(require_entry_or_above),
+    company_id: Annotated[int | None, Depends(get_company_scope)] = None,
+):
+    """List all scheduled invoice reminders with invoice details."""
+    stmt = (
+        select(InvoiceReminder, Invoice)
+        .join(Invoice, InvoiceReminder.invoice_id == Invoice.id)
+    )
+    if company_id:
+        stmt = stmt.where(Invoice.company_id == company_id)
+    stmt = stmt.order_by(InvoiceReminder.scheduled_at.asc())
+    result = await db.execute(stmt)
+    rows = result.all()
+    data = []
+    for reminder, invoice in rows:
+        data.append({
+            "id": reminder.id,
+            "invoice_id": reminder.invoice_id,
+            "invoice_number": invoice.invoice_number,
+            "scheduled_at": reminder.scheduled_at.isoformat() if reminder.scheduled_at else None,
+            "sent_at": reminder.sent_at.isoformat() if reminder.sent_at else None,
+            "message": reminder.message if hasattr(reminder, 'message') else None,
+        })
+    return APIResponse(data=data)
+
+
 @router.post("/parse-and-save", response_model=APIResponse[ParseUploadResponse])
 async def parse_and_save_invoice(
     db: Annotated[AsyncSession, Depends(get_db)],
