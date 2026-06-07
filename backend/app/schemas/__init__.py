@@ -377,3 +377,15 @@ class InvoiceParseSchema(BaseModel):
 class ParseUploadResponse(BaseModel):
     document_id: int
     parse_result: InvoiceParseSchema
+
+class CashFlowSummary(BaseModel):
+    period_start: date
+    period_end: date
+    total_invoiced: Decimal
+    total_received: Decimal
+    total_outstanding: Decimal
+    overdue_count: int
+    paid_count: int
+    draft_count: int
+    currency: str
+    invoices: list[dict] = Field(default_factory=list)  # ← add this line
