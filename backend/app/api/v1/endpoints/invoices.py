@@ -1,6 +1,6 @@
 """Invoice CRUD, dispatch, mark-received, Excel export, OneDrive sync, and PDF parse."""
 import uuid
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Annotated, Optional
 
@@ -15,10 +15,10 @@ from app.core.company_scope import get_company_scope
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.rbac import require_admin, require_any_role, require_entry_or_above
-from app.models.domain import Customer, Invoice
-from app.models.enums import AuditAction, InvoiceStatus
+from app.models.domain import Customer, Invoice,Milestone, InvoiceReminder
+from app.models.enums import AuditAction, AlertStatus, InvoiceStatus, MilestoneStatus
 from app.parsers.invoice_parser import parse_invoice
-from app.schemas import APIResponse, InvoiceCreate, InvoiceParseSchema, InvoiceRead, InvoiceUpdate
+from app.schemas import APIResponse, InvoiceCreate, InvoiceParseSchema, InvoiceRead, InvoiceUpdate, ParseUploadResponse
 from app.services.audit_service import write_audit
 from app.services.excel_service import export_invoices_to_excel
 from app.services.onedrive_service import upload_file_to_onedrive
@@ -268,3 +268,115 @@ async def parse_invoice_file(
         dest.unlink(missing_ok=True)  # clean up temp file
 
     return APIResponse(data=result)
+
+# ── Parse and save ────────────────────────────────────────────────────────────
+
+@router.post("/parse-and-save", response_model=APIResponse[ParseUploadResponse])
+async def parse_and_save_invoice(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user=Depends(require_entry_or_above),
+    company_id: Annotated[int | None, Depends(get_company_scope)] = None,
+    file: UploadFile = File(...),
+):
+    """Upload a PDF/DOCX, parse it, save the invoice, auto-create a milestone and 3 reminders."""
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="Filename required")
+    ext = Path(file.filename).suffix.lower()
+    if ext not in _ALLOWED_EXTENSIONS:
+        raise HTTPException(status_code=400, detail="Only PDF and DOCX files are supported")
+
+    content = await file.read()
+    if len(content) > settings.MAX_UPLOAD_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"File exceeds maximum size of {settings.MAX_UPLOAD_BYTES // (1024 * 1024)} MB",
+        )
+
+    resolved_company = company_id
+    if not resolved_company:
+        raise HTTPException(status_code=400, detail="Select an organization first")
+
+    # Save temp file and parse
+    safe_name = f"{uuid.uuid4().hex}{ext}"
+    dest = UPLOAD_DIR / safe_name
+    dest.write_bytes(content)
+    try:
+        parse_result = parse_invoice(str(dest))
+    finally:
+        dest.unlink(missing_ok=True)
+
+    # Resolve or create customer
+    customer = None
+    customer_name = parse_result.customer_name or parse_result.vendor_name or parse_result.vendor
+    if customer_name:
+        cust_q = await db.execute(
+            select(Customer).where(
+                Customer.company_id == resolved_company,
+                Customer.name == customer_name,
+            )
+        )
+        customer = cust_q.scalar_one_or_none()
+        if not customer:
+            customer = Customer(company_id=resolved_company, name=customer_name)
+            db.add(customer)
+            await db.flush()
+
+    if not customer:
+        raise HTTPException(status_code=400, detail="Could not determine customer from document")
+
+    # Build invoice
+    invoice_number = parse_result.invoice_number or f"INV-{uuid.uuid4().hex[:8].upper()}"
+    invoice_date = parse_result.invoice_date or date.today()
+    due_date = invoice_date + timedelta(days=30)
+    total = parse_result.total or parse_result.subtotal or 0
+
+    inv = Invoice(
+        company_id=resolved_company,
+        customer_id=customer.id,
+        invoice_number=invoice_number,
+        status=InvoiceStatus.draft,
+        amount=total,
+        currency=parse_result.currency or "USD",
+        issue_date=invoice_date,
+        due_date=due_date,
+        uploaded_by=current_user.id,
+    )
+    db.add(inv)
+    await db.flush()
+
+    # Auto-create milestone
+    milestone = Milestone(
+        invoice_id=inv.id,
+        title=f"Payment due — {invoice_number}",
+        due_date=due_date,
+        amount=total,
+        status=MilestoneStatus.pending,
+    )
+    db.add(milestone)
+
+    # Auto-create 3 reminders: 7d, 3d, 1d before due date
+    for days_before in [7, 3, 1]:
+        reminder = InvoiceReminder(
+            invoice_id=inv.id,
+            scheduled_at=datetime.combine(
+                due_date - timedelta(days=days_before),
+                datetime.min.time(),
+            ).replace(tzinfo=timezone.utc),
+        )
+        db.add(reminder)
+
+    await write_audit(
+        db,
+        changed_by=current_user.id,
+        entity_type="invoice",
+        entity_id=inv.id,
+        action=AuditAction.created,
+        detail={"source": "parse-and-save"},
+    )
+    await db.commit()
+    await db.refresh(inv)
+
+    return APIResponse(
+        data=ParseUploadResponse(document_id=inv.id, parse_result=parse_result),
+        message="Invoice parsed and saved",
+    )
