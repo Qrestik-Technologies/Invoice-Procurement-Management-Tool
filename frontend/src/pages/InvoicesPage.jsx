@@ -271,21 +271,28 @@ export default function InvoicesPage() {
     try {
       const res = await apiClient.post('/invoices/parse-and-save', data, { headers: { 'Content-Type': 'multipart/form-data' } });
       const parsed = res.data.data?.parse_result || {};
+      console.log('Parse result:', parsed);
+
+      const vendorName = parsed.customer_name || parsed.vendor_name || parsed.vendor || '';
+      const amountVal = parsed.total ?? parsed.subtotal ?? 0;
+      const ORGS = [{ id: 10, name: 'Infinitum Global' }, { id: 11, name: 'Qrestik Technologies' }];
+      const orgMatch = vendorName
+        ? ORGS.find(c =>
+            vendorName.toLowerCase().includes(c.name.toLowerCase()) ||
+            c.name.toLowerCase().includes(vendorName.toLowerCase()))
+        : null;
+
       setForm(f => ({
         ...f,
         invoice_number: parsed.invoice_number || f.invoice_number,
         subtotal: parsed.subtotal != null ? String(parsed.subtotal) : f.subtotal,
         tax: parsed.tax != null ? String(parsed.tax) : f.tax,
-        amount: parsed.total != null ? String(parsed.total) : f.amount,
+        amount: amountVal ? String(amountVal) : f.amount,
         currency: parsed.currency || f.currency,
         issue_date: parsed.invoice_date || f.issue_date,
         due_date: parsed.due_date || f.due_date,
         notes: parsed.notes || f.notes,
-        organization_id: (() => {
-          if (!parsed.customer_name) return f.organization_id;
-          const match = customers.find(c => c.name.toLowerCase().includes(parsed.customer_name.toLowerCase()));
-          return match ? String(match.id) : f.organization_id;
-        })(),
+        organization_id: orgMatch ? String(orgMatch.id) : f.organization_id,
       }));
       toast.success(parsed.missing_fields?.length ? 'Partial parse — review highlighted fields' : 'Invoice parsed — review and save');
       if (parsed.missing_fields?.length) toast(`Fill manually: ${parsed.missing_fields.join(', ')}`, { icon: '⚠️' });
