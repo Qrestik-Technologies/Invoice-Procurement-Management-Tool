@@ -29,9 +29,11 @@ const EMPTY_FORM = {
   total: '', currency: 'USD', invoice_date: '', due_date: '', notes: '',
 };
 
+const ALLOWED_CUSTOMERS = ['inginitum global', 'qrestik technologies'];
+
 const DEFAULT_CUSTOMERS = [
-  { id: 1, name: 'Qrestik Technologies L.L.C' },
-  { id: 2, name: 'Infinitum Global' },
+  { id: 1, name: 'Qrestik Technologies' },
+  { id: 2, name: 'Inginitum Global' },
 ];
 
 function currencySymbol(code) { return CURRENCY_SYMBOLS[code] || `${code} `; }
@@ -253,7 +255,7 @@ export default function InvoicesPage() {
     if (!organizationId) return;
     load();
     apiClient.get('/customers')
-      .then(r => { const d = r.data.data || []; setCustomers(d.length > 0 ? d : DEFAULT_CUSTOMERS); })
+      .then(r => { const d = (r.data.data || []).filter(c => ALLOWED_CUSTOMERS.some(a => c.name.toLowerCase().includes(a))); setCustomers(d.length > 0 ? d : DEFAULT_CUSTOMERS); })
       .catch(() => setCustomers(DEFAULT_CUSTOMERS));
   }, [statusFilter, organizationId]);
 
