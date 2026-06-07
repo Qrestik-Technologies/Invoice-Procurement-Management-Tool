@@ -423,7 +423,7 @@ export default function InvoicesPage() {
                     <span className="text-xs text-[#9CA3AF] mr-0.5">{currencySymbol(inv.currency)}</span>
                     {Number(inv.total || inv.amount || 0).toLocaleString()}
                   </td>
-                  <td className="px-5 py-3 text-[#6B7280]">{inv.invoice_date || '—'}</td>
+                  <td className="px-5 py-3 text-[#6B7280]">{inv.issue_date || inv.invoice_date || '—'}</td>
                   <td className="px-5 py-3 text-[#6B7280]">{inv.due_date || '—'}</td>
                   <td className="px-5 py-3">
                     <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${STATUS_COLORS[inv.status] || 'bg-gray-100 text-gray-600'}`}>
