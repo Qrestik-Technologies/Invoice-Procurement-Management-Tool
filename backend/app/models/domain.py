@@ -121,22 +121,6 @@ class Reminder(Base):
     invoice = relationship("Invoice", back_populates="reminders")
 
 
-class Document(Base):
-    __tablename__ = "documents"
-
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    uploaded_by: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
-    invoice_id: Mapped[Optional[int]] = mapped_column(ForeignKey("invoices.id"), nullable=True)
-    filename: Mapped[str] = mapped_column(String(500), nullable=False)
-    file_path: Mapped[str] = mapped_column(String(500), nullable=False)
-    content_type: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
-    size_bytes: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    onedrive_item_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-
-    uploader = relationship("User", back_populates="documents", foreign_keys=[uploaded_by])
-
-
 class AuditLog(Base):
     __tablename__ = "audit_logs"
 

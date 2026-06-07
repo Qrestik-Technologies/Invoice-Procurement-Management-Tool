@@ -1,7 +1,7 @@
+from app.models.documents import Document
 from app.models.domain import (
     AuditLog,
     Customer,
-    Document,
     Invoice,
     Milestone,
     Payment,
