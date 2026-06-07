@@ -244,7 +244,7 @@ export default function InvoicesPage() {
                     {customers.find(c => c.id === inv.customer_id)?.name || inv.customer_id}
                   </td>
                   <td className="px-5 py-3">
-                    {currencySymbol(inv.currency)}{Number(inv.total).toLocaleString()}
+                      {currencySymbol(inv.currency)}{Number(inv.total).toLocaleString()}
                   </td>
                   <td className="px-5 py-3 text-[#6B7280]">{inv.invoice_date}</td>
                   <td className="px-5 py-3 text-[#6B7280]">{inv.due_date}</td>
