@@ -307,16 +307,19 @@ export default function InvoicesPage() {
   const handleCreate = async (e) => {
     e.preventDefault();
     try {
+      const subtotal = Number(form.subtotal || 0);
+      const tax = Number(form.tax || 0);
+      const total = Number(form.amount || 0) || (subtotal + tax);
       await apiClient.post('/invoices', {
         invoice_number: form.invoice_number,
         customer_id: form.organization_id ? Number(form.organization_id) : null,
         currency: form.currency,
         invoice_date: form.issue_date,
         due_date: form.due_date,
-        subtotal: Number(form.subtotal || 0),
-        tax: Number(form.tax || 0),
-        total: Number(form.amount || 0),
-        amount: Number(form.amount || 0),
+        subtotal: subtotal,
+        tax: tax,
+        total: total,
+        amount: total,
         issue_date: form.issue_date,
         notes: form.notes || null,
       });
@@ -418,7 +421,7 @@ export default function InvoicesPage() {
                   </td>
                   <td className="px-5 py-3 text-[#6B7280]">
                     <span className="text-xs text-[#9CA3AF] mr-0.5">{currencySymbol(inv.currency)}</span>
-                    {Number(inv.total ?? 0).toLocaleString()}
+                    {Number(inv.total || inv.amount || 0).toLocaleString()}
                   </td>
                   <td className="px-5 py-3 text-[#6B7280]">{inv.invoice_date || '—'}</td>
                   <td className="px-5 py-3 text-[#6B7280]">{inv.due_date || '—'}</td>

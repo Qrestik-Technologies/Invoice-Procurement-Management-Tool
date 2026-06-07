@@ -306,89 +306,20 @@ async def parse_and_save_invoice(
     finally:
         dest.unlink(missing_ok=True)
 
-    # Resolve or create customer
-    customer = None
-    customer_name = parse_result.customer_name or parse_result.vendor_name or parse_result.vendor
-    if customer_name:
-        cust_q = await db.execute(
-            select(Customer).where(
-                Customer.company_id == resolved_company,
-                Customer.name == customer_name,
-            )
-        )
-        customer = cust_q.scalar_one_or_none()
-        if not customer:
-            customer = Customer(company_id=resolved_company, name=customer_name)
-            db.add(customer)
-            await db.flush()
-
-    if not customer:
-        raise HTTPException(status_code=400, detail="Could not determine customer from document")
-
-    # Build invoice
-    invoice_number = parse_result.invoice_number or f"INV-{uuid.uuid4().hex[:8].upper()}"
-    invoice_date = parse_result.invoice_date or date.today()
-
-    # ── Duplicate check ──────────────────────────────────────────────────────
+    # Return parse result only — saving happens when user clicks Create Invoice
+    invoice_number = parse_result.invoice_number or ""
+    
+    # Duplicate check — warn but don't block
     dup_result = await db.execute(
         select(Invoice.id).where(Invoice.invoice_number == invoice_number).limit(1)
     )
-    if dup_result.scalar():
+    if dup_result.scalar() and invoice_number:
         raise HTTPException(
             status_code=409,
             detail=f"Invoice {invoice_number} already exists. Duplicate upload prevented."
         )
-    # ────────────────────────────────────────────────────────────────────────
-    due_date = invoice_date + timedelta(days=30)
-    total = parse_result.total or parse_result.subtotal or 0
-
-    inv = Invoice(
-        company_id=resolved_company,
-        customer_id=customer.id,
-        invoice_number=invoice_number,
-        status=InvoiceStatus.draft,
-        amount=total,
-        currency=parse_result.currency or "USD",
-        issue_date=invoice_date,
-        due_date=due_date,
-        uploaded_by=current_user.id,
-    )
-    db.add(inv)
-    await db.flush()
-
-    # Auto-create milestone
-    milestone = Milestone(
-        invoice_id=inv.id,
-        title=f"Payment due — {invoice_number}",
-        due_date=due_date,
-        amount=total,
-        status=MilestoneStatus.pending,
-    )
-    db.add(milestone)
-
-    # Auto-create 3 reminders: 7d, 3d, 1d before due date
-    for days_before in [7, 3, 1]:
-        reminder = InvoiceReminder(
-            invoice_id=inv.id,
-            scheduled_at=datetime.combine(
-                due_date - timedelta(days=days_before),
-                datetime.min.time(),
-            ).replace(tzinfo=timezone.utc),
-        )
-        db.add(reminder)
-
-    await write_audit(
-        db,
-        changed_by=current_user.id,
-        entity_type="invoice",
-        entity_id=inv.id,
-        action=AuditAction.created,
-        detail={"source": "parse-and-save"},
-    )
-    await db.commit()
-    await db.refresh(inv)
 
     return APIResponse(
-        data=ParseUploadResponse(document_id=inv.id, parse_result=parse_result),
+        data=ParseUploadResponse(document_id=0, parse_result=parse_result),
         message="Invoice parsed and saved",
     )
