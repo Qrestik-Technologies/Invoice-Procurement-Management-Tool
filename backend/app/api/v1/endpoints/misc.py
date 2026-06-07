@@ -144,16 +144,16 @@ async def cash_flow_summary(
     result = await db.execute(q)
     invoices = result.scalars().all()
 
-    total_invoiced = sum((i.total for i in invoices), Decimal("0"))
+    total_invoiced = sum((i.amount for i in invoices), Decimal("0"))
     received = [i for i in invoices if i.status in (InvoiceStatus.received, InvoiceStatus.paid)]
-    total_received = sum((i.total for i in received), Decimal("0"))
+    total_received = sum((i.amount for i in received), Decimal("0"))
     total_outstanding = total_invoiced - total_received
 
     invoice_rows = [
         {
             "id": i.id,
             "customer": i.customer.name if i.customer else "—",
-            "amount": float(i.total),
+            "amount": float(i.amount),
             "due_date": str(i.due_date),
             "status": i.status.value if hasattr(i.status, "value") else i.status,
         }
