@@ -21,4 +21,4 @@ python-multipart
 pytesseract
 pdf2image
 jinja2
-psycopg2-binary
+psycopg2-binarypdfplumber
