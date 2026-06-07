@@ -13,10 +13,7 @@ from app.core.company_scope import get_company_scope
 from app.core.database import get_db
 from app.core.rbac import require_admin, require_any_role, require_entry_or_above
 from app.core.security import get_redis
-from app.models.audit_logs import AuditLog
-from app.models.invoices import Invoice
-from app.models.payments import Payment
-from app.models.inovice_remainder import InvoiceReminder
+from app.models.domain import AuditLog, Invoice, Payment, Reminder as InvoiceReminder
 from app.models.enums import AuditAction, InvoiceStatus
 from app.schemas import (
     APIResponse,
