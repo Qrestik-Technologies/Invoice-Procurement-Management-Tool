@@ -43,3 +43,14 @@ class AlertStatus(str, enum.Enum):
     at_risk = "at_risk"
     delayed = "delayed"
 
+class ReminderType(str, enum.Enum):
+    payment_reminder = "payment_reminder"
+    milestone_alert = "milestone_alert"
+
+class ReminderStatus(str, enum.Enum):
+    delivered = "delivered"
+    failed = "failed"
+class SyncStatus(str, enum.Enum):
+    pending = "pending"
+    synced = "synced"
+    failed = "failed"

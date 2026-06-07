@@ -8,10 +8,8 @@ from sqlalchemy.orm import sessionmaker
 
 from app.core.celery_app import celery_app
 from app.core.config import settings
-from app.models.customers import Customer
-from app.models.enums import InvoiceStatus, ReminderStatus, ReminderType
-from app.models.invoices import Invoice
-from app.models.milestones import Milestone
+from app.models.domain import Customer, Invoice, Milestone
+from app.models.enums import InvoiceStatus, ReminderStatus, ReminderType, TemplateType
 from app.models.reminder_logs import ReminderLog
 
 logger = logging.getLogger(__name__)

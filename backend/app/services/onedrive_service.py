@@ -1,12 +1,9 @@
 import logging
 from pathlib import Path
-
 import httpx
-
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
-
 _GRAPH_BASE = "https://graph.microsoft.com/v1.0"
 _SCOPE = ["https://graph.microsoft.com/.default"]
 
@@ -15,10 +12,8 @@ def _get_access_token() -> str | None:
     if not all([settings.ONEDRIVE_CLIENT_ID, settings.ONEDRIVE_CLIENT_SECRET, settings.ONEDRIVE_TENANT_ID]):
         logger.warning("OneDrive credentials not configured")
         return None
-
     try:
         import msal
-
         app = msal.ConfidentialClientApplication(
             settings.ONEDRIVE_CLIENT_ID,
             authority=f"https://login.microsoftonline.com/{settings.ONEDRIVE_TENANT_ID}",
@@ -41,10 +36,8 @@ def upload_file_to_onedrive(
     token = _get_access_token()
     if not token:
         return None
-
     folder = settings.ONEDRIVE_FOLDER
     upload_url = f"{_GRAPH_BASE}/drives/{drive_id}/root:/{folder}/{filename}:/content"
-
     try:
         with httpx.Client(timeout=60) as client:
             resp = client.put(
@@ -66,7 +59,6 @@ def get_file_download_url(item_id: str, drive_id: str = "me") -> str | None:
     token = _get_access_token()
     if not token:
         return None
-
     try:
         with httpx.Client(timeout=30) as client:
             resp = client.get(
@@ -78,3 +70,15 @@ def get_file_download_url(item_id: str, drive_id: str = "me") -> str | None:
     except Exception as exc:
         logger.exception("OneDrive get URL failed for item %s: %s", item_id, exc)
         return None
+
+
+class OneDriveService:
+    def upload_to_onedrive(self, local_path: str, filename: str) -> str | None:
+        file_bytes = Path(local_path).read_bytes()
+        result = upload_file_to_onedrive(file_bytes, filename)
+        if result:
+            return result.get("webUrl") or result.get("@microsoft.graph.downloadUrl")
+        return None
+
+
+onedrive_service = OneDriveService()

@@ -15,7 +15,8 @@ from app.core.company_scope import get_company_scope
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.rbac import require_admin, require_any_role, require_entry_or_above
-from app.models.domain import Customer, Invoice,Milestone, InvoiceReminder
+from app.models.domain import Customer, Invoice,Milestone
+from app.models.inovice_remainder import InvoiceReminder
 from app.models.enums import AuditAction, AlertStatus, InvoiceStatus, MilestoneStatus
 from app.parsers.invoice_parser import parse_invoice
 from app.schemas import APIResponse, InvoiceCreate, InvoiceParseSchema, InvoiceRead, InvoiceUpdate, ParseUploadResponse
