@@ -25,15 +25,15 @@ const CURRENCY_SYMBOLS = {
 };
 
 const EMPTY_FORM = {
-  invoice_number: '', customer_id: '', subtotal: '', tax: '',
-  total: '', currency: 'USD', invoice_date: '', due_date: '', notes: '',
+  invoice_number: '', organization_id: '', subtotal: '', tax: '',
+  amount: '', currency: 'USD', issue_date: '', due_date: '', notes: '',
 };
 
-const ALLOWED_CUSTOMERS = ['inginitum global', 'qrestik technologies'];
+const ALLOWED_CUSTOMERS = ['infinitum global', 'inginitum global', 'qrestik technologies'];
 
 const DEFAULT_CUSTOMERS = [
   { id: 1, name: 'Qrestik Technologies' },
-  { id: 2, name: 'Inginitum Global' },
+  { id: 2, name: 'Infinitum Global' },
 ];
 
 function currencySymbol(code) { return CURRENCY_SYMBOLS[code] || `${code} `; }
@@ -276,15 +276,15 @@ export default function InvoicesPage() {
         invoice_number: parsed.invoice_number || f.invoice_number,
         subtotal: parsed.subtotal != null ? String(parsed.subtotal) : f.subtotal,
         tax: parsed.tax != null ? String(parsed.tax) : f.tax,
-        total: parsed.total != null ? String(parsed.total) : f.total,
+        amount: parsed.total != null ? String(parsed.total) : f.amount,
         currency: parsed.currency || f.currency,
-        invoice_date: parsed.invoice_date || f.invoice_date,
+        issue_date: parsed.invoice_date || f.issue_date,
         due_date: parsed.due_date || f.due_date,
         notes: parsed.notes || f.notes,
-        customer_id: (() => {
-          if (!parsed.customer_name) return f.customer_id;
+        organization_id: (() => {
+          if (!parsed.customer_name) return f.organization_id;
           const match = customers.find(c => c.name.toLowerCase().includes(parsed.customer_name.toLowerCase()));
-          return match ? String(match.id) : f.customer_id;
+          return match ? String(match.id) : f.organization_id;
         })(),
       }));
       toast.success(parsed.missing_fields?.length ? 'Partial parse — review highlighted fields' : 'Invoice parsed — review and save');
@@ -302,13 +302,15 @@ export default function InvoicesPage() {
     try {
       await apiClient.post('/invoices', {
         invoice_number: form.invoice_number,
-        customer_id: form.customer_id ? Number(form.customer_id) : null,
+        customer_id: form.organization_id ? Number(form.organization_id) : null,
         currency: form.currency,
-        invoice_date: form.invoice_date,
+        invoice_date: form.issue_date,
         due_date: form.due_date,
         subtotal: Number(form.subtotal || 0),
         tax: Number(form.tax || 0),
-        total: Number(form.total || 0),
+        total: Number(form.amount || 0),
+        amount: Number(form.amount || 0),
+        issue_date: form.issue_date,
         notes: form.notes || null,
       });
       toast.success('Invoice created');
@@ -465,17 +467,17 @@ export default function InvoicesPage() {
             <form onSubmit={handleCreate} className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <Input label="Invoice #" value={form.invoice_number} onChange={set('invoice_number')} required placeholder="INV-001" />
-                <Select label="Customer" value={form.customer_id} onChange={set('customer_id')}>
-                  <option value="">Select customer</option>
+                <Select label="Organization" value={form.organization_id} onChange={set('organization_id')} required>
+                  <option value="">Select organization</option>
                   {customers.filter(c => ALLOWED_CUSTOMERS.some(a => c.name.toLowerCase().includes(a))).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </Select>
                 <Input label="Subtotal" type="number" step="0.01" value={form.subtotal} onChange={set('subtotal')} placeholder="0.00" />
                 <Input label="Tax" type="number" step="0.01" value={form.tax} onChange={set('tax')} placeholder="0.00" />
-                <Input label="Total" type="number" step="0.01" value={form.total} onChange={set('total')} required placeholder="0.00" />
+                <Input label="Amount" type="number" step="0.01" value={form.amount} onChange={set('amount')} required placeholder="0.00" />
                 <Select label="Currency" value={form.currency} onChange={set('currency')}>
                   {['USD', 'EUR', 'GBP', 'AED'].map(c => <option key={c}>{c}</option>)}
                 </Select>
-                <Input label="Invoice Date" type="date" value={form.invoice_date} onChange={set('invoice_date')} required />
+                <Input label="Invoice Date" type="date" value={form.issue_date} onChange={set('issue_date')} required />
                 <Input label="Due Date" type="date" value={form.due_date} onChange={set('due_date')} required />
               </div>
               <Input label="Notes" value={form.notes} onChange={set('notes')} placeholder="Optional" />
