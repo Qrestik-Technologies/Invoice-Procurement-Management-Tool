@@ -139,6 +139,15 @@ export default function NewInvoiceDrawer({ open, onClose }) {
     <Drawer open={open} onClose={handleClose} title="New Invoice" width="max-w-2xl">
       <form className="flex h-full flex-col">
         <div className="flex-1 space-y-5">
+          {/* Upload zone — auto-fills form fields below */}
+          <div className="rounded-lg border-2 border-dashed border-border p-6 text-center hover:border-primary/40">
+            <Upload className="mx-auto h-8 w-8 text-[#9CA3AF]" />
+            <p className="mt-2 text-sm font-medium">Upload Invoice PDF</p>
+            <p className="text-xs text-[#6B7280]">Auto-fills fields from parsed document</p>
+            <input type="file" accept=".pdf,.docx" className="mt-3 text-xs" onChange={handleFileUpload} disabled={uploading} />
+            {uploading && <p className="mt-2 text-xs text-primary">Parsing document…</p>}
+          </div>
+
           <div className="grid gap-4 sm:grid-cols-2">
             <Select label="Customer" error={fieldError('customerId')} className={cn(missingFields.includes('customer_name') && 'ring-2 ring-red-300 rounded-lg')} {...register('customerId')}>
               <option value="">Select customer…</option>
