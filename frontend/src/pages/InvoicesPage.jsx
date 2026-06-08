@@ -392,7 +392,7 @@ export default function InvoicesPage() {
             </div>
             <div>
               <p className="text-sm font-medium text-[#111827]">No invoices found</p>
-              <p className="text-xs text-[#9CA3AF] mt-1">Upload your first invoice to get started</p>
+              <p className="text-xs text-[#9CA3AF] mt-1">Click "New Invoice" to get started</p>
             </div>
             {canEdit && (
               <button
