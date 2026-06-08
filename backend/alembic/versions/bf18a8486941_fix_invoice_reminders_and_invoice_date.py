@@ -66,6 +66,8 @@ def upgrade() -> None:
     op.drop_column('documents', 'content_type')
     op.drop_column('documents', 'size_bytes')
     op.add_column('invoice_reminders', sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False))
+    op.add_column('invoice_reminders', sa.Column('scheduled_at', sa.DateTime(timezone=True), nullable=True))
+    op.execute("UPDATE invoice_reminders SET scheduled_at = now() WHERE scheduled_at IS NULL")
     op.alter_column('invoice_reminders', 'scheduled_at',
                existing_type=postgresql.TIMESTAMP(timezone=True),
                nullable=False)
