@@ -202,7 +202,7 @@ class CustomerRead(CustomerBase):
 class InvoiceBase(BaseModel):
     company_id: int | None = None
     invoice_number: str
-    customer_id: int
+    customer_id: int | None = None
     status: InvoiceStatus = InvoiceStatus.draft
     amount: Decimal
     currency: str = "USD"
