@@ -1,4 +1,5 @@
 """Invoice CRUD, dispatch, mark-received, Excel export, OneDrive sync, and PDF parse."""
+import logging
 import uuid
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -23,6 +24,8 @@ from app.schemas import APIResponse, InvoiceCreate, InvoiceParseSchema, InvoiceR
 from app.services.audit_service import write_audit
 from app.services.excel_service import export_invoices_to_excel
 from app.services.onedrive_service import upload_file_to_onedrive
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/invoices", tags=["invoices"])
 
