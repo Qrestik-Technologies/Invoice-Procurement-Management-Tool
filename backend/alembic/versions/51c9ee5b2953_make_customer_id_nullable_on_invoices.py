@@ -25,6 +25,7 @@ def upgrade() -> None:
                nullable=False)
     op.add_column('invoice_reminders', sa.Column('sent_at', sa.DateTime(timezone=True), nullable=True))
     op.add_column('invoice_reminders', sa.Column('message', sa.Text(), nullable=True))
+    op.alter_column('invoices', 'customer_id', existing_type=sa.INTEGER(), nullable=True)
     # ### end Alembic commands ###
 
 
@@ -35,4 +36,5 @@ def downgrade() -> None:
     op.alter_column('documents', 'sync_status',
                existing_type=postgresql.ENUM('pending', 'synced', 'failed', name='syncstatus'),
                nullable=True)
+    op.alter_column('invoices', 'customer_id', existing_type=sa.INTEGER(), nullable=True)
     # ### end Alembic commands ###
