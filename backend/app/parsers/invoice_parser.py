@@ -214,10 +214,15 @@ def _extract_infinitum(text: str) -> dict:
     if m:
         data["total"] = float(m.group(1).replace(",", ""))
 
-    # Bill-to
-    m = re.search(r"Bill To[:\s]*\n\s*(.+?)(?:\n)", text, re.I)
+    # Ship-to person name (first line after "Ship To")
+    m = re.search(r"Ship To[:\s]*\n\s*(.+?)(?:\n)", text, re.I)
     if m:
         data["customer_name"] = m.group(1).strip()
+    else:
+        # Fallback to Bill-to
+        m = re.search(r"Bill To[:\s]*\n\s*(.+?)(?:\n)", text, re.I)
+        if m:
+            data["customer_name"] = m.group(1).strip()
 
     bill_block = re.search(r"Bill To[:\s]*\n(.+?)(?:Ship To|Description)", text, re.I | re.S)
     if bill_block:
