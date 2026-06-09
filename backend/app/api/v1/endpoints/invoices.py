@@ -374,19 +374,7 @@ async def parse_and_save_invoice(
             detail=f"Invoice {invoice_number} already exists. Duplicate upload prevented."
         )
 
-    # ── Auto-upload PDF to OneDrive ──────────────────────────────────────────
-    try:
-        od_filename = f"{invoice_number or 'invoice'}_{safe_name}{ext}"
-        od_result = await run_in_threadpool(
-            upload_file_to_onedrive, content_bytes, od_filename
-        )
-        if od_result:
-            logger.info("Uploaded %s to OneDrive: %s", od_filename, od_result.get("webUrl"))
-        else:
-            logger.warning("OneDrive upload skipped or failed for %s", od_filename)
-    except Exception as exc:
-        logger.warning("OneDrive upload error (non-fatal): %s", exc)
-    # ─────────────────────────────────────────────────────────────────────────
+    # OneDrive upload happens only on actual invoice creation, not on parse
 
     return APIResponse(
         data=ParseUploadResponse(document_id=0, parse_result=parse_result),
