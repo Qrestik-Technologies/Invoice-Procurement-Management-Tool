@@ -202,7 +202,6 @@ class CustomerRead(CustomerBase):
 class InvoiceBase(BaseModel):
     company_id: int | None = None
     invoice_number: str
-    customer_id: int | None = None
     status: InvoiceStatus = InvoiceStatus.draft
     amount: Decimal
     currency: str = "USD"
@@ -217,7 +216,6 @@ class InvoiceCreate(InvoiceBase):
 
 class InvoiceUpdate(BaseModel):
     invoice_number: str | None = None
-    customer_id: int | None = None
     status: InvoiceStatus | None = None
     amount: Decimal | None = None
     currency: str | None = None

@@ -98,14 +98,6 @@ async def create_invoice(
     if not resolved_company:
         raise HTTPException(status_code=400, detail="Select an organization first")
 
-    if body.customer_id:
-        cust_result = await db.execute(select(Customer).where(Customer.id == body.customer_id))
-        customer = cust_result.scalar_one_or_none()
-        if not customer:
-            raise HTTPException(status_code=404, detail="Customer not found")
-        if customer.company_id != resolved_company:
-            raise HTTPException(status_code=400, detail="Customer does not belong to the selected organization")
-
     dup = await db.execute(
         select(Invoice).where(
             Invoice.company_id == resolved_company,
