@@ -144,6 +144,16 @@ async def create_invoice(
                       entity_id=inv.id, action=AuditAction.created)
     await db.commit()
     await db.refresh(inv)
+
+    # ── Auto-upload invoice summary to OneDrive (once on create) ────────────
+    try:
+        xlsx_bytes = await run_in_threadpool(export_invoices_to_excel, [inv])
+        od_filename = f"invoice_{inv.invoice_number}.xlsx"
+        await run_in_threadpool(upload_file_to_onedrive, xlsx_bytes, od_filename)
+    except Exception as exc:
+        logger.warning("OneDrive upload error (non-fatal): %s", exc)
+    # ────────────────────────────────────────────────────────────────────────
+
     return APIResponse(data=InvoiceRead.model_validate(inv), message="Invoice created")
 
 
