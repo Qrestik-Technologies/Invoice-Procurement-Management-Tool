@@ -23,6 +23,7 @@ from app.parsers.invoice_parser import parse_invoice
 from app.schemas import APIResponse, InvoiceCreate, InvoiceParseSchema, InvoiceRead, InvoiceUpdate, ParseUploadResponse
 from app.services.audit_service import write_audit
 from app.services.excel_service import export_invoices_to_excel
+from app.services.pdf_service import export_invoice_to_pdf
 from app.services.onedrive_service import upload_file_to_onedrive
 
 logger = logging.getLogger(__name__)
@@ -139,9 +140,9 @@ async def create_invoice(
 
     # ── Auto-upload invoice summary to OneDrive (once on create) ────────────
     try:
-        xlsx_bytes = await run_in_threadpool(export_invoices_to_excel, [inv])
-        od_filename = f"invoice_{inv.invoice_number}.xlsx"
-        await run_in_threadpool(upload_file_to_onedrive, xlsx_bytes, od_filename)
+        pdf_bytes = await run_in_threadpool(export_invoice_to_pdf, inv)
+        od_filename = f"invoice_{inv.invoice_number}.pdf"
+        await run_in_threadpool(upload_file_to_onedrive, pdf_bytes, od_filename)
     except Exception as exc:
         logger.warning("OneDrive upload error (non-fatal): %s", exc)
     # ────────────────────────────────────────────────────────────────────────
@@ -244,10 +245,10 @@ async def sync_to_onedrive(
 ):
     """Re-upload the invoice Excel snapshot to OneDrive and store the item ID."""
     inv = await _get_invoice_or_404(db, invoice_id)
-    xlsx_bytes = await run_in_threadpool(export_invoices_to_excel, [inv])
+    pdf_bytes = await run_in_threadpool(export_invoice_to_pdf, inv)
 
-    filename = f"invoice_{inv.invoice_number}.xlsx"
-    metadata = await run_in_threadpool(upload_file_to_onedrive, xlsx_bytes, filename)
+    filename = f"invoice_{inv.invoice_number}.pdf"
+    metadata = await run_in_threadpool(upload_file_to_onedrive, pdf_bytes, filename)
 
     if metadata:
         inv.onedrive_item_id = metadata.get("id")
