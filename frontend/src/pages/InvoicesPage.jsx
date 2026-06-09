@@ -272,9 +272,10 @@ export default function InvoicesPage() {
       const res = await apiClient.post('/invoices/parse-and-save', data, { headers: { 'Content-Type': 'multipart/form-data' } });
       const parsed = res.data.data?.parse_result || {};
 
-      // Map vendor field directly to org ID
-      const vendorKey = parsed.vendor || '';
-      const orgId = vendorKey === 'infinitum' ? '10' : vendorKey === 'qrestik' ? '11' : '';
+      // Map vendor field to company by matching name
+      const vendorKey = (parsed.vendor || parsed.vendor_name || '').toLowerCase();
+      const matchedCompany = customers.find(c => c.name.toLowerCase().includes(vendorKey) || vendorKey.includes(c.name.toLowerCase().split(' ')[0]));
+      const orgId = matchedCompany ? String(matchedCompany.id) : '';
       const amountVal = parsed.total ?? parsed.subtotal ?? 0;
 
       setForm(f => ({
@@ -312,7 +313,7 @@ export default function InvoicesPage() {
       const total = Number(form.amount || 0) || (subtotal + tax);
       await apiClient.post('/invoices', {
         invoice_number: form.invoice_number,
-        customer_id: form.organization_id ? Number(form.organization_id) : null,
+        company_id: form.organization_id ? Number(form.organization_id) : null,
         currency: form.currency,
         invoice_date: form.issue_date,
         due_date: form.due_date,
