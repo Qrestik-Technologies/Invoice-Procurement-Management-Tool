@@ -36,7 +36,6 @@ class Customer(Base):
     )
 
     company = relationship("Company", back_populates="customers")
-    invoices = relationship("Invoice", back_populates="customer")
 
 
 class Invoice(Base):
@@ -64,7 +63,6 @@ class Invoice(Base):
     )
 
     company = relationship("Company", back_populates="invoices")
-    customer = relationship("Customer", back_populates="invoices")
     uploader = relationship("User", back_populates="uploaded_invoices", foreign_keys=[uploaded_by])
     milestones = relationship("Milestone", back_populates="invoice", cascade="all, delete-orphan")
     payments = relationship("Payment", back_populates="invoice", cascade="all, delete-orphan")
