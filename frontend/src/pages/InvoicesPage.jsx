@@ -244,6 +244,7 @@ export default function InvoicesPage() {
   const [statusFilter, setStatusFilter] = useState('');
   const [form, setForm] = useState(EMPTY_FORM);
   const [uploadParsing, setUploadParsing] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [newInvDragging, setNewInvDragging] = useState(false);
 
   const load = () => {
@@ -307,6 +308,8 @@ export default function InvoicesPage() {
 
   const handleCreate = async (e) => {
     e.preventDefault();
+    if (submitting) return;
+    setSubmitting(true);
     try {
       const subtotal = Number(form.subtotal || 0);
       const tax = Number(form.tax || 0);
@@ -327,9 +330,11 @@ export default function InvoicesPage() {
       toast.success('Invoice created');
       setShowModal(false);
       setForm(EMPTY_FORM);
+      setSubmitting(false);
       load();
     } catch (err) {
       toast.error(extractErrorMessage(err, 'Failed to create invoice'));
+      setSubmitting(false);
     }
   };
 
@@ -486,7 +491,7 @@ export default function InvoicesPage() {
               <Input label="Notes" value={form.notes} onChange={set('notes')} placeholder="Optional" />
               <div className="flex justify-end gap-3 pt-2">
                 <Button variant="secondary" type="button" onClick={() => { setShowModal(false); setUploadParsing(false); }}>Cancel</Button>
-                <Button type="submit">Create Invoice</Button>
+                <Button type="submit" disabled={submitting}>{submitting ? 'Creating...' : 'Create Invoice'}</Button>
               </div>
             </form>
           </div>
