@@ -254,7 +254,7 @@ export default function InvoicesPage() {
   useEffect(() => {
     if (!organizationId) return;
     load();
-    apiClient.get('/customers')
+    apiClient.get('/companies')
       .then(r => { const d = r.data.data || []; setCustomers(d.length > 0 ? d : DEFAULT_CUSTOMERS); })
       .catch(() => setCustomers(DEFAULT_CUSTOMERS));
   }, [statusFilter, organizationId]);
@@ -274,7 +274,7 @@ export default function InvoicesPage() {
 
       // Map vendor field directly to org ID
       const vendorKey = parsed.vendor || '';
-      const orgId = vendorKey === 'infinitum' ? '1' : vendorKey === 'qrestik' ? '2' : '';
+      const orgId = vendorKey === 'infinitum' ? '10' : vendorKey === 'qrestik' ? '11' : '';
       const amountVal = parsed.total ?? parsed.subtotal ?? 0;
 
       setForm(f => ({
@@ -312,7 +312,7 @@ export default function InvoicesPage() {
       const total = Number(form.amount || 0) || (subtotal + tax);
       await apiClient.post('/invoices', {
         invoice_number: form.invoice_number,
-        company_id: form.organization_id ? Number(form.organization_id) : null,
+        customer_id: form.organization_id ? Number(form.organization_id) : null,
         currency: form.currency,
         invoice_date: form.issue_date,
         due_date: form.due_date,
@@ -393,8 +393,16 @@ export default function InvoicesPage() {
             <div>
               <p className="text-sm font-medium text-[#111827]">No invoices found</p>
               <p className="text-xs text-[#9CA3AF] mt-1">Click "New Invoice" to get started</p>
-          </div>
             </div>
+            {canEdit && (
+              <button
+                onClick={() => setShowUploadModal(true)}
+                className="mt-1 rounded-md bg-primary px-4 py-2 text-xs font-medium text-white hover:bg-primary/90 transition-colors"
+              >
+                Upload your first invoice
+              </button>
+            )}
+          </div>
         ) : (
           <table className="w-full text-sm">
             <thead>
@@ -471,8 +479,7 @@ export default function InvoicesPage() {
                 <Input label="Invoice #" value={form.invoice_number} onChange={set('invoice_number')} required placeholder="INV-001" />
                 <Select label="Organization" value={form.organization_id} onChange={set('organization_id')} required>
                   <option value="">Select organization</option>
-                  <option value="1">Inginitum Global</option>
-                  <option value="2">Qrestik Technologies</option>
+                  {customers.map(c => <option key={c.id} value={String(c.id)}>{c.name}</option>)}
                 </Select>
                 <Input label="Subtotal" type="number" step="0.01" value={form.subtotal} onChange={set('subtotal')} placeholder="0.00" />
                 <Input label="Tax" type="number" step="0.01" value={form.tax} onChange={set('tax')} placeholder="0.00" />
