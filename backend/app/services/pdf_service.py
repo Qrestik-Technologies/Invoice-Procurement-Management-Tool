@@ -36,7 +36,7 @@ def export_invoice_to_pdf(inv) -> bytes:
     story.append(Spacer(1, 0.2*inch))
 
     # ── Customer ───────────────────────────────────────────────────────────
-    customer_name = (inv.customer.name if inv.customer else None) or getattr(inv, "customer_name", "N/A")
+    customer_name = getattr(inv, "customer_name", None) or (inv.customer.name if getattr(inv, "customer", None) else None) or "N/A"
     story.append(Paragraph(f"<b>Bill To:</b> {customer_name}", sub_style))
     if getattr(inv, "bill_to_address", None):
         story.append(Paragraph(inv.bill_to_address, sub_style))

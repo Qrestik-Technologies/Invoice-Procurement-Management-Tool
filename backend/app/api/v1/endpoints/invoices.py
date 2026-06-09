@@ -140,7 +140,8 @@ async def create_invoice(
 
     # ── Auto-upload invoice summary to OneDrive (once on create) ────────────
     try:
-        pdf_bytes = await run_in_threadpool(export_invoice_to_pdf, inv)
+        inv_for_pdf = await _get_invoice_or_404(db, inv.id)
+        pdf_bytes = await run_in_threadpool(export_invoice_to_pdf, inv_for_pdf)
         od_filename = f"invoice_{inv.invoice_number}.pdf"
         await run_in_threadpool(upload_file_to_onedrive, pdf_bytes, od_filename)
     except Exception as exc:
