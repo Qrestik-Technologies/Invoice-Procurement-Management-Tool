@@ -274,7 +274,7 @@ export default function InvoicesPage() {
 
       // Map vendor field directly to org ID
       const vendorKey = parsed.vendor || '';
-      const orgId = vendorKey === 'infinitum' ? '10' : vendorKey === 'qrestik' ? '11' : '';
+      const orgId = vendorKey === 'infinitum' ? '1' : vendorKey === 'qrestik' ? '2' : '';
       const amountVal = parsed.total ?? parsed.subtotal ?? 0;
 
       setForm(f => ({
@@ -471,8 +471,8 @@ export default function InvoicesPage() {
                 <Input label="Invoice #" value={form.invoice_number} onChange={set('invoice_number')} required placeholder="INV-001" />
                 <Select label="Organization" value={form.organization_id} onChange={set('organization_id')} required>
                   <option value="">Select organization</option>
-                  <option value="10">Infinitum Global</option>
-                  <option value="11">Qrestik Technologies</option>
+                  <option value="1">Inginitum Global</option>
+                  <option value="2">Qrestik Technologies</option>
                 </Select>
                 <Input label="Subtotal" type="number" step="0.01" value={form.subtotal} onChange={set('subtotal')} placeholder="0.00" />
                 <Input label="Tax" type="number" step="0.01" value={form.tax} onChange={set('tax')} placeholder="0.00" />
