@@ -44,20 +44,20 @@ pwd_context = type("PwdCtx", (), {
 
 # ── JWT helpers ───────────────────────────────────────────────────────────────
 
-def _make_token(data: dict[str, Any], expires_delta: timedelta) -> str:
+def _make_token(data: dict[str, Any], expires_delta: timedelta | None = None) -> str:
     payload = data.copy()
-    payload["exp"] = datetime.now(timezone.utc) + expires_delta
+    # No expiry set — tokens are valid until explicitly revoked (blacklisted)
     return jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
 
 
 def create_access_token(subject: str, extra: dict[str, Any] | None = None) -> str:
     data = {"sub": subject, "type": "access", **(extra or {})}
-    return _make_token(data, timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES))
+    return _make_token(data)
 
 
 def create_refresh_token(subject: str, extra: dict[str, Any] | None = None) -> str:
     data = {"sub": subject, "type": "refresh", **(extra or {})}
-    return _make_token(data, timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS))
+    return _make_token(data)
 
 
 def _decode_token(token: str) -> dict[str, Any]:
