@@ -395,14 +395,6 @@ export default function InvoicesPage() {
               <p className="text-sm font-medium text-[#111827]">No invoices found</p>
               <p className="text-xs text-[#9CA3AF] mt-1">Click "New Invoice" to get started</p>
             </div>
-            {canEdit && (
-              <button
-                onClick={() => setShowUploadModal(true)}
-                className="mt-1 rounded-md bg-primary px-4 py-2 text-xs font-medium text-white hover:bg-primary/90 transition-colors"
-              >
-                Upload your first invoice
-              </button>
-            )}
           </div>
         ) : (
           <table className="w-full text-sm">
