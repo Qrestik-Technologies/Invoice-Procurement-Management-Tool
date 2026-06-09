@@ -45,7 +45,7 @@ class Invoice(Base):
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), nullable=False, index=True)
     invoice_number: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
-    customer_id: Mapped[int] = mapped_column(ForeignKey("customers.id"), nullable=False)
+    customer_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     uploaded_by: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
     status: Mapped[InvoiceStatus] = mapped_column(
         Enum(InvoiceStatus), nullable=False, default=InvoiceStatus.draft
