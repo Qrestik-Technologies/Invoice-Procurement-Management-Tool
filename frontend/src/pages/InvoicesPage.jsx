@@ -26,7 +26,7 @@ const CURRENCY_SYMBOLS = {
 
 const EMPTY_FORM = {
   invoice_number: '', organization_id: '', subtotal: '', tax: '',
-  amount: '', currency: 'USD', issue_date: '', due_date: '', notes: '',
+  amount: '', currency: 'USD', issue_date: '', due_date: '', notes: '', customer_name: '',
 };
 
 const ALLOWED_CUSTOMERS = ['infinitum global', 'inginitum global', 'qrestik technologies'];
@@ -290,6 +290,7 @@ export default function InvoicesPage() {
         due_date: parsed.due_date ? String(parsed.due_date) : f.due_date,
         notes: parsed.notes || f.notes,
         organization_id: orgId || f.organization_id,
+        customer_name: parsed.customer_name || f.customer_name,
       }));
       toast.success(parsed.missing_fields?.length ? 'Partial parse — review highlighted fields' : 'Invoice parsed — review and save');
       if (parsed.missing_fields?.length) toast(`Fill manually: ${parsed.missing_fields.join(', ')}`, { icon: '⚠️' });
@@ -326,6 +327,7 @@ export default function InvoicesPage() {
         amount: total,
         issue_date: form.issue_date,
         notes: form.notes || null,
+        customer_name: form.customer_name || null,
       });
       toast.success('Invoice created');
       setShowModal(false);
@@ -415,7 +417,7 @@ export default function InvoicesPage() {
                 <tr key={inv.id} className="border-b border-border last:border-0 hover:bg-gray-50">
                   <td className="px-5 py-3 font-medium text-[#111827]">{inv.invoice_number}</td>
                   <td className="px-5 py-3 text-[#6B7280]">
-                    {customers.find(c => c.id === inv.customer_id)?.name || inv.customer_name || '—'}
+                    {inv.customer_name || '—'}
                   </td>
                   <td className="px-5 py-3 text-[#6B7280]">
                     <span className="text-xs text-[#9CA3AF] mr-0.5">{currencySymbol(inv.currency)}</span>
