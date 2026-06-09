@@ -16,7 +16,18 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.drop_constraint('fk_invoices_customer_id', 'invoices', type_='foreignkey')
+    op.execute("""
+        DO $$
+        BEGIN
+            IF EXISTS (
+                SELECT 1 FROM information_schema.table_constraints
+                WHERE constraint_name = 'fk_invoices_customer_id'
+                AND table_name = 'invoices'
+            ) THEN
+                ALTER TABLE invoices DROP CONSTRAINT fk_invoices_customer_id;
+            END IF;
+        END $$;
+    """)
     op.drop_column('invoices', 'customer_id')
     op.add_column('invoices', sa.Column('customer_name', sa.String(255), nullable=True))
 
