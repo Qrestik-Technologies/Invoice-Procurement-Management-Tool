@@ -374,15 +374,6 @@ async def parse_and_save_invoice(
     # Return parse result only — saving happens when user clicks Create Invoice
     invoice_number = parse_result.invoice_number or ""
 
-    # Duplicate check
-    dup_result = await db.execute(
-        select(Invoice.id).where(Invoice.invoice_number == invoice_number).limit(1)
-    )
-    if dup_result.scalar() and invoice_number:
-        raise HTTPException(
-            status_code=409,
-            detail=f"Invoice {invoice_number} already exists. Duplicate upload prevented."
-        )
 
     # OneDrive upload happens only on actual invoice creation, not on parse
 
