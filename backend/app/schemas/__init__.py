@@ -207,6 +207,7 @@ class InvoiceBase(BaseModel):
     currency: str = "USD"
     issue_date: date
     due_date: date
+    customer_name: str | None = None
     description: str | None = None
 
 
@@ -221,6 +222,7 @@ class InvoiceUpdate(BaseModel):
     currency: str | None = None
     issue_date: date | None = None
     due_date: date | None = None
+    customer_name: str | None = None
     description: str | None = None
     file_path: str | None = None
     onedrive_item_id: str | None = None
@@ -242,6 +244,7 @@ class InvoiceRead(InvoiceBase):
 class MilestoneBase(BaseModel):
     invoice_id: int
     title: str
+    customer_name: str | None = None
     description: str | None = None
     due_date: date | None = None
     amount: Decimal | None = None
@@ -254,6 +257,7 @@ class MilestoneCreate(MilestoneBase):
 
 class MilestoneUpdate(BaseModel):
     title: str | None = None
+    customer_name: str | None = None
     description: str | None = None
     due_date: date | None = None
     amount: Decimal | None = None
