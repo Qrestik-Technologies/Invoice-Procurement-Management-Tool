@@ -64,7 +64,7 @@ export default function NewInvoiceDrawer({ open, onClose }) {
   const customerId = watch('customerId');
 
   const { subtotal, tax, total } = useMemo(() => {
-    const sub = lineItems.reduce((sum, item) => sum + (Number(item.qty) || 0) * (Number(item.rate) || 0), 0);
+    const sub = (lineItems || []).reduce((sum, item) => sum + (Number(item.qty) || 0) * (Number(item.rate) || 0), 0);
     const taxAmt = sub * taxRate;
     return { subtotal: sub, tax: taxAmt, total: sub + taxAmt };
   }, [lineItems, taxRate]);

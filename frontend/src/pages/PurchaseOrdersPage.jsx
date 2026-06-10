@@ -500,7 +500,7 @@ export default function PurchaseOrdersPage() {
     queryFn: () => listPOs(tab === "all" ? undefined : { status: tab }),
   });
 
-  const totalValue  = pos.reduce((s, p) => s + Number(p.total_value || 0), 0);
+  const totalValue  = (pos || []).reduce((s, p) => s + Number(p.total_value || 0), 0);
   const activeCount = pos.filter((p) => p.status === "active").length;
 
   return (
