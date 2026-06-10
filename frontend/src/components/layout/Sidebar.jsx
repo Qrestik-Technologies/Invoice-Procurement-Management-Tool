@@ -10,8 +10,7 @@ import {
   Settings,
   X,
   ChevronLeft,
-  LogOut,
-} from 'lucide-react';
+  LogOut,, ClipboardList} from 'lucide-react';
 import { cn } from '../../utils/cn';
 import { RoleBadge } from '../ui/Badge';
 import { useAuth } from '../../context/AuthContext';
@@ -20,7 +19,8 @@ import { canAccessSettings, toDisplayRole } from '../../utils/status';
 const navItems = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
   { to: '/invoices', label: 'Invoices', icon: FileText },
-  { to: '/milestones', label: 'Milestones', icon: Flag },
+  { to: '/purchase-orders', label: 'Purchase Orders', icon: ClipboardList },
+    { to: '/milestones', label: 'Milestones', icon: Flag },
   { to: '/customers', label: 'Customers', icon: Users },
   { to: '/reminders', label: 'Reminders', icon: Bell },
   { to: '/documents', label: 'Documents', icon: FolderOpen },
