@@ -1,41 +1,58 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { listPOs, parsePO, createPO, confirmPO, closePO, raiseInvoice, getPO, getInvoicesForPO } from "../api/purchaseOrders";
+import { Plus, Download, FileText, Loader2 } from "lucide-react";
+import toast from "react-hot-toast";
+
+import { 
+  listPOs, 
+  parsePO, 
+  createPO, 
+  confirmPO, 
+  closePO, 
+  raiseInvoice, 
+  getPO, 
+  getInvoicesForPO 
+} from "../api/purchaseOrders";
+
+import Button from "../components/ui/Button";
+import PageHeader from "../components/ui/PageHeader";
+import { usePageMeta } from "../hooks/usePageMeta";
 
 const STATUS_COLORS = {
-  draft:              "bg-gray-100 text-gray-700",
-  active:             "bg-green-100 text-green-700",
-  invoiced:           "bg-blue-100 text-blue-700",
+  draft: "bg-gray-100 text-gray-600",
+  active: "bg-green-100 text-green-700",
+  invoiced: "bg-blue-100 text-blue-700",
   partially_invoiced: "bg-yellow-100 text-yellow-700",
-  closed:             "bg-red-100 text-red-700",
+  closed: "bg-red-100 text-red-700",
 };
-
 
 function LinkedInvoices({ poId }) {
   const { data, isLoading } = useQuery({
     queryKey: ["po-invoices", poId],
     queryFn: () => getInvoicesForPO(poId).then(r => r.data.data),
   });
-  if (isLoading) return <p className="text-xs text-gray-400">Loading invoices...</p>;
+
+  if (isLoading) return <p className="text-xs text-gray-400">Loading linked invoices...</p>;
   if (!data?.length) return (
     <div>
-      <h3 className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-2">Invoices</h3>
+      <h3 className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-2">Linked Invoices</h3>
       <p className="text-sm text-gray-400">No invoices raised yet.</p>
     </div>
   );
+
   return (
     <div>
-      <h3 className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-2">Invoices</h3>
+      <h3 className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-2">Linked Invoices</h3>
       <div className="space-y-2">
         {data.map(inv => (
-          <div key={inv.id} className="border rounded p-3 text-sm flex justify-between items-center">
+          <div key={inv.id} className="border rounded-lg p-3 text-sm flex justify-between items-center bg-gray-50">
             <div>
               <p className="font-medium">{inv.invoice_number}</p>
-              <p className="text-xs text-gray-400">{inv.issue_date} · Due {inv.due_date}</p>
+              <p className="text-xs text-gray-500">{inv.issue_date} • Due {inv.due_date}</p>
             </div>
             <div className="text-right">
               <p className="font-medium">USD {Number(inv.amount).toLocaleString()}</p>
-              <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">{inv.status}</span>
+              <span className="text-xs bg-blue-100 text-blue-700 px-2.5 py-0.5 rounded-full">{inv.status}</span>
             </div>
           </div>
         ))}
@@ -46,17 +63,31 @@ function LinkedInvoices({ poId }) {
 
 function PODetailPanel({ po, onClose, qc }) {
   const confirmMutation = useMutation({
-    mutationFn: (id) => confirmPO(id),
-    onSuccess: () => { qc.invalidateQueries(["purchase-orders"]); qc.invalidateQueries(["po-detail", po.id]); },
+    mutationFn: confirmPO,
+    onSuccess: () => {
+      qc.invalidateQueries(["purchase-orders"]);
+      qc.invalidateQueries(["po-detail", po.id]);
+      toast.success("PO confirmed");
+    },
   });
+
   const closeMutation = useMutation({
-    mutationFn: (id) => closePO(id),
-    onSuccess: () => { qc.invalidateQueries(["purchase-orders"]); qc.invalidateQueries(["po-detail", po.id]); },
+    mutationFn: closePO,
+    onSuccess: () => {
+      qc.invalidateQueries(["purchase-orders"]);
+      qc.invalidateQueries(["po-detail", po.id]);
+      toast.success("PO closed");
+    },
   });
+
   const raiseMutation = useMutation({
-    mutationFn: (id) => raiseInvoice(id),
-    onSuccess: () => { qc.invalidateQueries(["purchase-orders"]); qc.invalidateQueries(["po-detail", po.id]); alert("Invoice created successfully!"); },
-    onError: (e) => alert("Failed: " + (e.response?.data?.detail || e.message)),
+    mutationFn: raiseInvoice,
+    onSuccess: () => {
+      qc.invalidateQueries(["purchase-orders"]);
+      qc.invalidateQueries(["po-detail", po.id]);
+      toast.success("Invoice raised successfully!");
+    },
+    onError: (e) => toast.error("Failed to raise invoice: " + (e.response?.data?.detail || e.message)),
   });
 
   const { data: detail } = useQuery({
@@ -68,56 +99,59 @@ function PODetailPanel({ po, onClose, qc }) {
 
   return (
     <div className="fixed inset-0 z-50 flex">
-      <div className="flex-1 bg-black/40" onClick={onClose} />
-      <div className="w-[520px] bg-white h-full overflow-y-auto shadow-xl flex flex-col">
-        <div className="flex items-center justify-between px-6 py-4 border-b">
+      <div className="flex-1 bg-black/60" onClick={onClose} />
+      <div className="w-[560px] bg-white h-full overflow-y-auto shadow-2xl flex flex-col">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-border">
           <div>
-            <h2 className="text-lg font-semibold">{d.po_number}</h2>
-            <p className="text-sm text-gray-500">{d.customer_name}</p>
+            <h2 className="text-xl font-semibold text-[#111827]">{d.po_number}</h2>
+            <p className="text-sm text-[#6B7280]">{d.customer_name}</p>
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl">✕</button>
+          <button onClick={onClose} className="text-2xl text-gray-400 hover:text-gray-600">✕</button>
         </div>
 
-        <div className="px-6 py-4 space-y-5 flex-1">
-          {/* Status + Actions */}
+        <div className="p-6 space-y-8 flex-1">
+          {/* Status & Actions */}
           <div className="flex items-center gap-3 flex-wrap">
-            <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium ${STATUS_COLORS[d.status]}`}>
+            <span className={`px-3 py-1 rounded-full text-sm font-medium ${STATUS_COLORS[d.status] || "bg-gray-100 text-gray-600"}`}>
               {d.status.replace(/_/g, " ")}
             </span>
+
             {d.status === "draft" && (
-              <button onClick={() => confirmMutation.mutate(d.id)}
-                className="text-xs bg-green-600 text-white px-3 py-1.5 rounded hover:bg-green-700">
+              <Button onClick={() => confirmMutation.mutate(d.id)} size="sm">
                 Confirm PO
-              </button>
+              </Button>
             )}
+
             {(d.status === "active" || d.status === "partially_invoiced") && (
-              <button onClick={() => raiseMutation.mutate(d.id)}
+              <Button 
+                onClick={() => raiseMutation.mutate(d.id)} 
                 disabled={raiseMutation.isPending}
-                className="text-xs bg-indigo-600 text-white px-3 py-1.5 rounded hover:bg-indigo-700 disabled:opacity-50">
-                {raiseMutation.isPending ? "Creating..." : "Raise Invoice"}
-              </button>
+                size="sm"
+              >
+                {raiseMutation.isPending ? "Creating Invoice..." : "Raise Invoice"}
+              </Button>
             )}
+
             {d.status === "invoiced" && (
-              <button onClick={() => closeMutation.mutate(d.id)}
-                className="text-xs border px-3 py-1.5 rounded hover:bg-gray-50">
+              <Button variant="secondary" onClick={() => closeMutation.mutate(d.id)} size="sm">
                 Close PO
-              </button>
+              </Button>
             )}
           </div>
 
-          {/* Details */}
-          <div className="grid grid-cols-2 gap-3 text-sm">
+          {/* Key Details */}
+          <div className="grid grid-cols-2 gap-x-8 gap-y-6 text-sm">
             {[
-              ["PO Date", d.po_date || "—"],
-              ["Expiry Date", d.expiry_date || "—"],
-              ["Total Value", `USD ${Number(d.total_value).toLocaleString()}`],
-              ["Payment Terms", d.payment_terms || "—"],
-              ["Billing Terms", d.billing_terms || "—"],
-              ["Authorised By", d.authorised_signatory || "—"],
+              ["PO Date", d.po_date],
+              ["Expiry Date", d.expiry_date],
+              ["Total Value", `USD ${Number(d.total_value || 0).toLocaleString()}`],
+              ["Payment Terms", d.payment_terms],
+              ["Billing Terms", d.billing_terms],
+              ["Authorised By", d.authorised_signatory],
             ].map(([label, value]) => (
               <div key={label}>
-                <p className="text-xs text-gray-400 uppercase tracking-wide">{label}</p>
-                <p className="font-medium mt-0.5">{value}</p>
+                <p className="text-xs text-gray-500 uppercase tracking-widest">{label}</p>
+                <p className="font-medium mt-1">{value || "—"}</p>
               </div>
             ))}
           </div>
@@ -125,24 +159,26 @@ function PODetailPanel({ po, onClose, qc }) {
           {/* Line Items */}
           {d.line_items?.length > 0 && (
             <div>
-              <h3 className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-2">Line Items</h3>
-              <div className="border rounded overflow-hidden text-sm">
-                <table className="w-full">
-                  <thead className="bg-gray-50 text-xs text-gray-500">
+              <h3 className="text-xs font-medium text-gray-500 uppercase tracking-widest mb-3">Line Items</h3>
+              <div className="border border-border rounded-xl overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50">
                     <tr>
-                      <th className="text-left px-3 py-2">Description</th>
-                      <th className="text-right px-3 py-2">Qty</th>
-                      <th className="text-right px-3 py-2">Rate</th>
-                      <th className="text-right px-3 py-2">Amount</th>
+                      <th className="text-left px-5 py-3">Description</th>
+                      <th className="text-right px-5 py-3">Qty</th>
+                      <th className="text-right px-5 py-3">Rate</th>
+                      <th className="text-right px-5 py-3">Amount</th>
                     </tr>
                   </thead>
-                  <tbody>
+                  <tbody className="divide-y">
                     {d.line_items.map((item, i) => (
-                      <tr key={i} className="border-t">
-                        <td className="px-3 py-2">{item.description || item.item || "—"}</td>
-                        <td className="px-3 py-2 text-right">{item.qty ?? item.quantity ?? 1}</td>
-                        <td className="px-3 py-2 text-right">{item.rate ?? item.unit_price ?? "—"}</td>
-                        <td className="px-3 py-2 text-right">{item.amount ?? item.total ?? "—"}</td>
+                      <tr key={i}>
+                        <td className="px-5 py-3">{item.description || item.item}</td>
+                        <td className="px-5 py-3 text-right">{item.qty ?? item.quantity}</td>
+                        <td className="px-5 py-3 text-right">{item.rate ?? item.unit_price}</td>
+                        <td className="px-5 py-3 text-right font-medium">
+                          USD {Number(item.amount ?? item.total).toLocaleString()}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -152,53 +188,23 @@ function PODetailPanel({ po, onClose, qc }) {
           )}
 
           {/* Addresses */}
-          {(d.ship_to_address || d.bill_to_address) && (
-            <div className="grid grid-cols-2 gap-3 text-sm">
-              {d.bill_to_address && (
-                <div>
-                  <p className="text-xs text-gray-400 uppercase tracking-wide mb-1">Bill To</p>
-                  <p className="text-sm whitespace-pre-line">{d.bill_to_address}</p>
-                </div>
-              )}
-              {d.ship_to_address && (
-                <div>
-                  <p className="text-xs text-gray-400 uppercase tracking-wide mb-1">Ship To</p>
-                  <p className="text-sm whitespace-pre-line">{d.ship_to_address}</p>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Status Timeline */}
-          <div>
-            <h3 className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-2">Timeline</h3>
-            <div className="space-y-2 text-sm">
-              <div className="flex gap-2 items-start">
-                <div className="w-2 h-2 rounded-full bg-gray-400 mt-1.5 shrink-0" />
-                <div><p className="font-medium">Created</p><p className="text-gray-400 text-xs">{new Date(d.created_at).toLocaleString()}</p></div>
+          <div className="grid grid-cols-2 gap-6 text-sm">
+            {d.bill_to_address && (
+              <div>
+                <p className="text-xs text-gray-500 uppercase tracking-widest mb-1">Bill To</p>
+                <p className="whitespace-pre-line">{d.bill_to_address}</p>
               </div>
-              {d.status !== "draft" && (
-                <div className="flex gap-2 items-start">
-                  <div className="w-2 h-2 rounded-full bg-green-500 mt-1.5 shrink-0" />
-                  <div><p className="font-medium">Confirmed → Active</p><p className="text-gray-400 text-xs">{new Date(d.updated_at).toLocaleString()}</p></div>
-                </div>
-              )}
-              {(d.status === "invoiced" || d.status === "closed") && (
-                <div className="flex gap-2 items-start">
-                  <div className="w-2 h-2 rounded-full bg-blue-500 mt-1.5 shrink-0" />
-                  <div><p className="font-medium">Invoice Raised</p></div>
-                </div>
-              )}
-              {d.status === "closed" && (
-                <div className="flex gap-2 items-start">
-                  <div className="w-2 h-2 rounded-full bg-red-400 mt-1.5 shrink-0" />
-                  <div><p className="font-medium">Closed</p></div>
-                </div>
-              )}
-            </div>
-
-          <LinkedInvoices poId={d.id} />
+            )}
+            {d.ship_to_address && (
+              <div>
+                <p className="text-xs text-gray-500 uppercase tracking-widest mb-1">Ship To</p>
+                <p className="whitespace-pre-line">{d.ship_to_address}</p>
+              </div>
+            )}
           </div>
+
+          {/* Timeline + Linked Invoices */}
+          <LinkedInvoices poId={d.id} />
         </div>
       </div>
     </div>
@@ -207,16 +213,17 @@ function PODetailPanel({ po, onClose, qc }) {
 
 export default function PurchaseOrdersPage() {
   const qc = useQueryClient();
+  const meta = usePageMeta("Purchase Orders", "Manage vendor orders and procurement records");
+
   const [file, setFile] = useState(null);
   const [parsed, setParsed] = useState(null);
-  const [filePath, setFilePath] = useState("");
   const [form, setForm] = useState({});
   const [uploading, setUploading] = useState(false);
   const [selectedPO, setSelectedPO] = useState(null);
 
-  const { data, isLoading } = useQuery({
+  const { data: pos = [], isLoading } = useQuery({
     queryKey: ["purchase-orders"],
-    queryFn: () => listPOs().then((r) => r.data.data),
+    queryFn: () => listPOs().then(r => r.data.data || []),
   });
 
   const handleUpload = async () => {
@@ -226,12 +233,12 @@ export default function PurchaseOrdersPage() {
       const fd = new FormData();
       fd.append("file", file);
       const res = await parsePO(fd);
-      const { parsed: p, file_path } = res.data.data;
+      const p = res.data.data.parsed || res.data.data;
       setParsed(p);
-      setFilePath(file_path);
       setForm(p);
+      toast.success("PO parsed successfully");
     } catch (e) {
-      alert("Parse failed: " + (e.response?.data?.detail || e.message));
+      toast.error("Parse failed: " + (e.response?.data?.detail || e.message));
     } finally {
       setUploading(false);
     }
@@ -239,92 +246,126 @@ export default function PurchaseOrdersPage() {
 
   const handleCreate = async () => {
     try {
-      await createPO(form, filePath);
+      await createPO(form);
       setParsed(null);
       setFile(null);
       setForm({});
       qc.invalidateQueries(["purchase-orders"]);
+      toast.success("Purchase Order created successfully");
     } catch (e) {
-      alert("Create failed: " + (e.response?.data?.detail || e.message));
+      toast.error("Failed to create PO");
     }
   };
 
+  const handleExport = () => toast.info("Export coming soon");
+
   return (
-    <div className="p-6 max-w-6xl mx-auto">
+    <div className="p-8">
       {selectedPO && <PODetailPanel po={selectedPO} onClose={() => setSelectedPO(null)} qc={qc} />}
 
-      <h1 className="text-2xl font-semibold mb-6">Purchase Orders</h1>
+      <PageHeader
+        title={meta.title}
+        description={meta.description}
+        action={
+          <div className="flex gap-3">
+            <Button variant="secondary" size="sm" onClick={handleExport}>
+              <Download className="h-4 w-4" /> Export
+            </Button>
+            <Button size="sm">
+              <Plus className="h-4 w-4" /> New Purchase Order
+            </Button>
+          </div>
+        }
+      />
 
       {/* Upload Section */}
-      <div className="bg-white border rounded-lg p-5 mb-6">
-        <h2 className="text-sm font-medium text-gray-500 uppercase tracking-wide mb-3">Upload PO</h2>
-        <div className="flex gap-3 items-center">
-          <input type="file" accept=".pdf,.docx,.doc"
+      <div className="bg-white border border-border rounded-xl p-6 mb-8 shadow-sm">
+        <h3 className="text-sm font-medium text-gray-500 uppercase tracking-widest mb-4">Upload PO</h3>
+        <div className="flex items-center gap-4">
+          <input
+            type="file"
+            accept=".pdf,.docx,.doc"
             onChange={(e) => setFile(e.target.files[0])}
-            className="text-sm text-gray-600" />
-          <button onClick={handleUpload} disabled={!file || uploading}
-            className="px-4 py-2 bg-indigo-600 text-white text-sm rounded hover:bg-indigo-700 disabled:opacity-50">
-            {uploading ? "Parsing..." : "Parse PO"}
-          </button>
+            className="text-sm text-gray-600 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-medium file:bg-primary file:text-white hover:file:bg-primary/90 cursor-pointer"
+          />
+          <Button onClick={handleUpload} disabled={!file || uploading} size="sm">
+            {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Parse PO"}
+          </Button>
         </div>
 
         {parsed && (
-          <div className="mt-4 grid grid-cols-2 gap-4">
-            {["po_number","customer_name","total_value","expiry_date","billing_terms","payment_terms","authorised_signatory"].map((k) => (
-              <div key={k}>
-                <label className="text-xs text-gray-500 uppercase">{k.replace(/_/g," ")}</label>
-                <input className="block w-full border rounded px-3 py-1.5 text-sm mt-0.5"
-                  value={form[k] || ""}
-                  onChange={(e) => setForm((f) => ({ ...f, [k]: e.target.value }))} />
-              </div>
-            ))}
-            <div className="col-span-2 flex gap-3 mt-2">
-              <button onClick={handleCreate}
-                className="px-4 py-2 bg-green-600 text-white text-sm rounded hover:bg-green-700">
-                Save PO
-              </button>
-              <button onClick={() => { setParsed(null); setFile(null); }}
-                className="px-4 py-2 border text-sm rounded hover:bg-gray-50">
+          <div className="mt-6 p-5 border border-border rounded-xl bg-gray-50">
+            <div className="grid grid-cols-2 gap-4">
+              {["po_number", "customer_name", "total_value", "expiry_date", "payment_terms", "billing_terms", "authorised_signatory"].map(k => (
+                <div key={k}>
+                  <label className="block text-xs text-gray-500 mb-1 uppercase tracking-widest">
+                    {k.replace(/_/g, " ")}
+                  </label>
+                  <input
+                    className="w-full border border-border rounded-lg px-3 py-2 text-sm"
+                    value={form[k] || ""}
+                    onChange={(e) => setForm(f => ({ ...f, [k]: e.target.value }))}
+                  />
+                </div>
+              ))}
+            </div>
+
+            <div className="flex gap-3 mt-6">
+              <Button onClick={handleCreate}>Save Purchase Order</Button>
+              <Button variant="secondary" onClick={() => { setParsed(null); setFile(null); }}>
                 Cancel
-              </button>
+              </Button>
             </div>
           </div>
         )}
       </div>
 
-      {/* Table */}
-      <div className="bg-white border rounded-lg overflow-hidden">
-        <table className="w-full text-sm">
-          <thead className="bg-gray-50 text-xs text-gray-500 uppercase">
-            <tr>
-              {["PO Number","Customer","Value","Expiry","Status",""].map((h, i) => (
-                <th key={i} className="text-left py-3 pr-4 pl-4">{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {isLoading && (
-              <tr><td colSpan={6} className="py-12 text-center text-gray-400">Loading...</td></tr>
-            )}
-            {(data || []).map((po) => (
-              <tr key={po.id} className="border-t hover:bg-gray-50 cursor-pointer" onClick={() => setSelectedPO(po)}>
-                <td className="py-3 pl-4 pr-4 font-medium text-indigo-600">{po.po_number}</td>
-                <td className="py-3 pr-4">{po.customer_name}</td>
-                <td className="py-3 pr-4">USD {Number(po.total_value).toLocaleString()}</td>
-                <td className="py-3 pr-4">{po.expiry_date || "—"}</td>
-                <td className="py-3 pr-4">
-                  <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_COLORS[po.status]}`}>
-                    {po.status.replace(/_/g, " ")}
-                  </span>
-                </td>
-                <td className="py-3 pr-4 text-gray-400 text-xs">View →</td>
+      {/* Main Content */}
+      <div className="bg-white border border-border rounded-xl shadow-sm overflow-hidden">
+        {isLoading ? (
+          <div className="py-20 text-center text-gray-400">Loading purchase orders...</div>
+        ) : pos.length === 0 ? (
+          <div className="flex flex-col items-center justify-center gap-4 py-20 text-center">
+            <div className="rounded-full bg-gray-100 p-5">
+              <FileText className="h-10 w-10 text-gray-400" />
+            </div>
+            <div>
+              <p className="text-lg font-medium text-gray-900">No purchase orders yet</p>
+              <p className="text-sm text-gray-500 mt-1">Upload a PO or create a new one to get started</p>
+            </div>
+          </div>
+        ) : (
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border bg-gray-50 text-left text-xs font-medium text-gray-500">
+                {["PO Number", "Customer", "Value", "Expiry", "Status"].map(h => (
+                  <th key={h} className="px-6 py-4">{h}</th>
+                ))}
+                <th className="w-8"></th>
               </tr>
-            ))}
-            {!isLoading && (data || []).length === 0 && (
-              <tr><td colSpan={6} className="py-12 text-center text-gray-400">No purchase orders yet</td></tr>
-            )}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {pos.map(po => (
+                <tr
+                  key={po.id}
+                  className="border-b border-border hover:bg-gray-50 cursor-pointer transition-colors"
+                  onClick={() => setSelectedPO(po)}
+                >
+                  <td className="px-6 py-4 font-medium text-[#0C447C]">{po.po_number}</td>
+                  <td className="px-6 py-4 text-gray-700">{po.customer_name}</td>
+                  <td className="px-6 py-4">USD {Number(po.total_value || 0).toLocaleString()}</td>
+                  <td className="px-6 py-4 text-gray-600">{po.expiry_date || "—"}</td>
+                  <td className="px-6 py-4">
+                    <span className={`inline-block px-3 py-1 text-xs font-medium rounded-full ${STATUS_COLORS[po.status]}`}>
+                      {po.status.replace(/_/g, " ")}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 text-right text-gray-400 text-xs">View →</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
       </div>
     </div>
   );
