@@ -1,260 +1,266 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, Download, FileText, Loader2 } from "lucide-react";
+import { Plus, Download, FileText, Loader2, X, Upload } from "lucide-react";
 import toast from "react-hot-toast";
 
-import { 
-  listPOs, parsePO, createPO, confirmPO, closePO, raiseInvoice, getPO, getInvoicesForPO 
+import {
+  listPOs,
+  parsePO,
+  createPO,
+  confirmPO,
+  closePO,
+  raiseInvoice,
+  getPO,
+  getInvoicesForPO,
 } from "../api/purchaseOrders";
 
 import Button from "../components/ui/Button";
 import PageHeader from "../components/ui/PageHeader";
-import { usePageMeta } from "../hooks/usePageMeta";
-import { Input, Select } from "../components/ui/FormFields";
+
+const STATUS_TABS = ["all", "draft", "active", "partially_invoiced", "fully_invoiced", "closed", "expired"];
 
 const STATUS_COLORS = {
-  draft: "bg-gray-100 text-gray-600",
-  active: "bg-green-100 text-green-700",
-  invoiced: "bg-blue-100 text-blue-700",
-  partially_invoiced: "bg-yellow-100 text-yellow-700",
-  closed: "bg-red-100 text-red-700",
+  draft: "bg-gray-100 text-gray-700",
+  active: "bg-blue-100 text-blue-700",
+  partially_invoiced: "bg-amber-100 text-amber-700",
+  fully_invoiced: "bg-emerald-100 text-emerald-700",
+  closed: "bg-slate-200 text-slate-700",
+  expired: "bg-red-100 text-red-700",
 };
 
-function LinkedInvoices({ poId }) {
-  const { data, isLoading } = useQuery({
-    queryKey: ["po-invoices", poId],
-    queryFn: () => getInvoicesForPO(poId).then(r => r.data.data),
-  });
-
-  if (isLoading) return <p className="text-xs text-gray-400">Loading linked invoices...</p>;
-  if (!data?.length) return <p className="text-sm text-gray-400">No invoices raised yet.</p>;
-
-  return (
-    <div>
-      <h3 className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-2">Linked Invoices</h3>
-      <div className="space-y-2">
-        {data.map(inv => (
-          <div key={inv.id} className="border rounded-lg p-3 text-sm flex justify-between items-center bg-gray-50">
-            <div>
-              <p className="font-medium">{inv.invoice_number}</p>
-              <p className="text-xs text-gray-500">{inv.issue_date} • Due {inv.due_date}</p>
-            </div>
-            <div className="text-right">
-              <p className="font-medium">USD {Number(inv.amount).toLocaleString()}</p>
-              <span className="text-xs bg-blue-100 text-blue-700 px-2.5 py-0.5 rounded-full">{inv.status}</span>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function PODetailPanel({ po, onClose, qc }) {
-  // ... (keeping your existing detail panel logic)
-  const confirmMutation = useMutation({ mutationFn: confirmPO, onSuccess: () => { qc.invalidateQueries(["purchase-orders"]); toast.success("PO confirmed"); } });
-  const closeMutation = useMutation({ mutationFn: closePO, onSuccess: () => { qc.invalidateQueries(["purchase-orders"]); toast.success("PO closed"); } });
-  const raiseMutation = useMutation({ mutationFn: raiseInvoice, onSuccess: () => { qc.invalidateQueries(["purchase-orders"]); toast.success("Invoice raised!"); } });
-
-  const { data: detail } = useQuery({ queryKey: ["po-detail", po.id], queryFn: () => getPO(po.id).then(r => r.data.data) });
-  const d = detail || po;
-
-  return (
-    <div className="fixed inset-0 z-50 flex">
-      <div className="flex-1 bg-black/60" onClick={onClose} />
-      <div className="w-[560px] bg-white h-full overflow-y-auto shadow-2xl">
-        {/* Your existing PODetailPanel content here */}
-        <div className="p-6 space-y-6">
-          <div className="flex justify-between items-start">
-            <div>
-              <h2 className="text-2xl font-semibold">{d.po_number}</h2>
-              <p className="text-gray-600">{d.customer_name}</p>
-            </div>
-            <button onClick={onClose} className="text-3xl text-gray-400 hover:text-black">×</button>
-          </div>
-
-          <div className="flex gap-3">
-            <span className={`px-4 py-1.5 rounded-full text-sm font-medium ${STATUS_COLORS[d.status]}`}>{d.status.replace(/_/g, " ")}</span>
-            {d.status === "draft" && <Button onClick={() => confirmMutation.mutate(d.id)}>Confirm PO</Button>}
-            {(d.status === "active" || d.status === "partially_invoiced") && <Button onClick={() => raiseMutation.mutate(d.id)}>Raise Invoice</Button>}
-            {d.status === "invoiced" && <Button variant="secondary" onClick={() => closeMutation.mutate(d.id)}>Close PO</Button>}
-          </div>
-
-          {/* Rest of your detail fields, line items, etc. */}
-          {/* ... (you can keep expanding this as needed) */}
-        </div>
-      </div>
-    </div>
-  );
-}
+const EMPTY_FORM = {
+  po_number: "",
+  customer_name: "",
+  total_po_value: "",
+  currency: "USD",
+  po_date: "",
+  expiry_date: "",
+  notes: "",
+};
 
 export default function PurchaseOrdersPage() {
   const qc = useQueryClient();
-  const meta = usePageMeta("Purchase Orders", "Manage vendor orders and procurement records");
-
-  const [showNewModal, setShowNewModal] = useState(false);
-  const [file, setFile] = useState(null);
-  const [parsed, setParsed] = useState(null);
-  const [form, setForm] = useState({
-    po_number: "",
-    customer_name: "",
-    customer_id: "",
-    po_date: "",
-    expiry_date: "",
-    status: "draft",
-    currency: "USD",
-    total_po_value: "",
-  });
-  const [uploading, setUploading] = useState(false);
-  const [selectedPO, setSelectedPO] = useState(null);
+  const [tab, setTab] = useState("all");
+  const [showNew, setShowNew] = useState(false);
+  const [form, setForm] = useState(EMPTY_FORM);
+  const [parsing, setParsing] = useState(false);
 
   const { data: pos = [], isLoading } = useQuery({
-    queryKey: ["purchase-orders"],
-    queryFn: () => listPOs().then(r => r.data.data || []),
+    queryKey: ["purchase-orders", tab],
+    queryFn: () => listPOs(tab === "all" ? undefined : { status: tab }),
   });
 
-  const handleUpload = async () => {
+  const createMut = useMutation({
+    mutationFn: createPO,
+    onSuccess: () => {
+      toast.success("Purchase order created");
+      qc.invalidateQueries({ queryKey: ["purchase-orders"] });
+      setForm(EMPTY_FORM);
+      setShowNew(false);
+    },
+    onError: (e) => toast.error(e?.message || "Failed to create PO"),
+  });
+
+  const handleFile = async (file) => {
     if (!file) return;
-    setUploading(true);
+    setParsing(true);
     try {
-      const fd = new FormData();
-      fd.append("file", file);
-      const res = await parsePO(fd);
-      const p = res.data.data.parsed || res.data.data;
-      setParsed(p);
-      setForm({ ...form, ...p });
-      toast.success("PO parsed successfully");
+      const parsed = await parsePO(file);
+      setForm((f) => ({ ...f, ...parsed }));
+      toast.success("Fields auto-filled from document");
     } catch (e) {
-      toast.error("Parse failed");
+      toast.error(e?.message || "Failed to parse document");
     } finally {
-      setUploading(false);
+      setParsing(false);
     }
   };
 
-  const handleCreate = async (e) => {
+  const onChange = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
+
+  const onSubmit = (e) => {
     e.preventDefault();
-    try {
-      await createPO(form);
-      setShowNewModal(false);
-      setForm({ po_number: "", customer_name: "", customer_id: "", po_date: "", expiry_date: "", status: "draft", currency: "USD", total_po_value: "" });
-      qc.invalidateQueries(["purchase-orders"]);
-      toast.success("Purchase Order created successfully");
-    } catch (e) {
-      toast.error("Failed to create Purchase Order");
+    if (!form.po_number || !form.customer_name) {
+      toast.error("PO Number and Customer are required");
+      return;
     }
+    createMut.mutate({
+      ...form,
+      total_po_value: Number(form.total_po_value || 0),
+    });
   };
 
-  const setField = (key) => (e) => setForm(f => ({ ...f, [key]: e.target.value }));
+  const headers = ["PO #", "Customer", "Value", "Expiry", "Status", ""];
 
   return (
-    <div className="p-8">
-      {selectedPO && <PODetailPanel po={selectedPO} onClose={() => setSelectedPO(null)} qc={qc} />}
-
-      <PageHeader
-        title={meta.title}
-        description={meta.description}
-        action={
-          <div className="flex gap-3">
-            <Button variant="secondary" size="sm">
-              <Download className="h-4 w-4" /> Export
-            </Button>
-            <Button size="sm" onClick={() => setShowNewModal(true)}>
-              <Plus className="h-4 w-4" /> New Purchase Order
-            </Button>
-          </div>
-        }
-      />
-
-      {/* Upload Section */}
-      <div className="bg-white border border-border rounded-xl p-6 mb-8 shadow-sm">
-        <h3 className="text-sm font-medium text-gray-500 uppercase tracking-widest mb-4">Upload PO</h3>
-        <div className="flex items-center gap-4">
-          <input
-            type="file"
-            accept=".pdf,.docx,.doc"
-            onChange={(e) => setFile(e.target.files[0])}
-            className="text-sm text-gray-600 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-medium file:bg-primary file:text-white hover:file:bg-primary/90 cursor-pointer"
-          />
-          <Button onClick={handleUpload} disabled={!file || uploading} size="sm">
-            {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Parse PO"}
+    <div className="p-6 space-y-6">
+      <div className="flex items-start justify-between">
+        <PageHeader
+          eyebrow="QRESTIK TECHNOLOGIES"
+          title="Purchase Orders"
+          subtitle="Qrestik Technologies — Manage purchase orders & milestones"
+        />
+        <div className="flex gap-2">
+          <Button variant="outline">
+            <Download className="w-4 h-4 mr-2" /> Export
+          </Button>
+          <Button onClick={() => setShowNew((s) => !s)}>
+            <Plus className="w-4 h-4 mr-2" /> New Purchase Order
           </Button>
         </div>
-
-        {parsed && (
-          <div className="mt-6 p-5 border border-border rounded-xl bg-gray-50">
-            {/* Parsed fields can be edited here if needed */}
-          </div>
-        )}
       </div>
 
-      {/* New Purchase Order Modal */}
-      {showNewModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="bg-white rounded-2xl w-full max-w-lg shadow-xl">
-            <div className="flex justify-between items-center border-b px-6 py-4">
-              <h3 className="text-lg font-semibold">New Purchase Order</h3>
-              <button onClick={() => setShowNewModal(false)} className="text-2xl text-gray-400 hover:text-black">×</button>
+      {/* Inline create panel — appears at the top */}
+      {showNew && (
+        <div className="bg-white border border-gray-200 rounded-2xl shadow-sm p-6 space-y-5">
+          <div className="flex items-center justify-between">
+            <h3 className="text-lg font-semibold text-gray-900">New Purchase Order</h3>
+            <button
+              onClick={() => setShowNew(false)}
+              className="text-gray-400 hover:text-gray-600"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          {/* Upload zone */}
+          <label className="flex flex-col items-center justify-center border-2 border-dashed border-gray-200 rounded-xl py-6 cursor-pointer hover:border-blue-300 hover:bg-blue-50/30 transition">
+            {parsing ? (
+              <Loader2 className="w-6 h-6 text-blue-600 animate-spin" />
+            ) : (
+              <FileText className="w-6 h-6 text-gray-400" />
+            )}
+            <span className="mt-2 text-sm text-gray-500">
+              Drop a PDF/DOCX to auto-fill fields below
+            </span>
+            <span className="mt-3 inline-flex items-center px-4 py-2 bg-blue-700 text-white text-sm rounded-lg">
+              <Upload className="w-4 h-4 mr-2" /> Browse file
+            </span>
+            <input
+              type="file"
+              accept=".pdf,.docx"
+              className="hidden"
+              onChange={(e) => handleFile(e.target.files?.[0])}
+            />
+          </label>
+
+          {/* Form */}
+          <form onSubmit={onSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Field label="PO #">
+              <input className={inputCls} placeholder="PO-001" value={form.po_number} onChange={onChange("po_number")} />
+            </Field>
+            <Field label="Customer">
+              <input className={inputCls} placeholder="Customer name" value={form.customer_name} onChange={onChange("customer_name")} />
+            </Field>
+            <Field label="Total Value">
+              <input type="number" step="0.01" className={inputCls} placeholder="0.00" value={form.total_po_value} onChange={onChange("total_po_value")} />
+            </Field>
+            <Field label="Currency">
+              <select className={inputCls} value={form.currency} onChange={onChange("currency")}>
+                <option>USD</option>
+                <option>INR</option>
+                <option>EUR</option>
+                <option>GBP</option>
+              </select>
+            </Field>
+            <Field label="PO Date">
+              <input type="date" className={inputCls} value={form.po_date} onChange={onChange("po_date")} />
+            </Field>
+            <Field label="Expiry Date">
+              <input type="date" className={inputCls} value={form.expiry_date} onChange={onChange("expiry_date")} />
+            </Field>
+            <div className="md:col-span-2">
+              <Field label="Notes">
+                <input className={inputCls} placeholder="Optional" value={form.notes} onChange={onChange("notes")} />
+              </Field>
             </div>
 
-            <form onSubmit={handleCreate} className="p-6 space-y-5">
-              <div className="grid grid-cols-2 gap-4">
-                <Input label="PO Number" value={form.po_number} onChange={setField('po_number')} required placeholder="PO-2026-001" />
-                <Input label="Customer Name" value={form.customer_name} onChange={setField('customer_name')} required />
-                <Input label="Customer ID" value={form.customer_id} onChange={setField('customer_id')} placeholder="Optional" />
-                <Input label="PO Date" type="date" value={form.po_date} onChange={setField('po_date')} required />
-                <Input label="Expiry Date" type="date" value={form.expiry_date} onChange={setField('expiry_date')} required />
-                <Select label="Currency" value={form.currency} onChange={setField('currency')}>
-                  <option value="USD">USD</option>
-                  <option value="AED">AED</option>
-                  <option value="EUR">EUR</option>
-                </Select>
-                <Input label="Total Value" type="number" step="0.01" value={form.total_po_value} onChange={setField('total_po_value')} required placeholder="0.00" />
-              </div>
-
-              <div className="flex justify-end gap-3 pt-4">
-                <Button type="button" variant="secondary" onClick={() => setShowNewModal(false)}>Cancel</Button>
-                <Button type="submit">Create Purchase Order</Button>
-              </div>
-            </form>
-          </div>
+            <div className="md:col-span-2 flex justify-end gap-2 pt-2">
+              <Button type="button" variant="outline" onClick={() => setShowNew(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={createMut.isPending}>
+                {createMut.isPending ? (
+                  <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Creating…</>
+                ) : (
+                  "Create PO"
+                )}
+              </Button>
+            </div>
+          </form>
         </div>
       )}
 
+      {/* Tabs */}
+      <div className="flex flex-wrap gap-2">
+        {STATUS_TABS.map((t) => (
+          <button
+            key={t}
+            onClick={() => setTab(t)}
+            className={`px-3 py-1.5 text-sm rounded-full transition ${
+              tab === t
+                ? "bg-blue-700 text-white"
+                : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+            }`}
+          >
+            {t.replace(/_/g, " ")}
+          </button>
+        ))}
+      </div>
+
       {/* Table */}
-      <div className="bg-white border border-border rounded-xl shadow-sm overflow-hidden">
+      <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
         {isLoading ? (
-          <div className="py-20 text-center text-gray-400">Loading purchase orders...</div>
+          <div className="p-10 flex justify-center">
+            <Loader2 className="w-6 h-6 text-blue-600 animate-spin" />
+          </div>
         ) : pos.length === 0 ? (
-          <div className="flex flex-col items-center justify-center gap-4 py-20">
-            <FileText className="h-12 w-12 text-gray-300" />
-            <p className="text-lg font-medium">No purchase orders yet</p>
-            <p className="text-gray-500">Click "New Purchase Order" to create one</p>
+          <div className="p-10 text-center text-gray-500">
+            No purchase orders yet. Click <span className="font-medium">New Purchase Order</span> to add one.
           </div>
         ) : (
           <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b bg-gray-50 text-xs font-medium text-gray-500">
-                {["PO Number", "Customer", "Value", "Expiry", "Status"].map(h => <th key={h} className="px-6 py-4 text-left">{h}</th>)}
-                <th></th>
+            <thead className="bg-gray-50 text-gray-500">
+              <tr>
+                {headers.map((h) => (
+                  <th key={h} className="text-left font-medium px-4 py-3">{h}</th>
+                ))}
               </tr>
             </thead>
-            <tbody>
-              {pos.map(po => (
-                <tr key={po.id} className="border-b hover:bg-gray-50 cursor-pointer" onClick={() => setSelectedPO(po)}>
-                  <td className="px-6 py-4 font-medium text-[#0C447C]">{po.po_number}</td>
-                  <td className="px-6 py-4">{po.customer_name}</td>
-                  <td className="px-6 py-4">USD {Number(po.total_po_value || po.total_value || 0).toLocaleString()}</td>
-                  <td className="px-6 py-4 text-gray-600">{po.expiry_date || "—"}</td>
-                  <td className="px-6 py-4">
-                    <span className={`px-3 py-1 text-xs rounded-full ${STATUS_COLORS[po.status]}`}>{po.status.replace(/_/g, " ")}</span>
+            <tbody className="divide-y divide-gray-100">
+              {pos.map((po) => (
+                <tr key={po.id} className="hover:bg-gray-50">
+                  <td className="px-4 py-3 font-medium text-gray-900">{po.po_number}</td>
+                  <td className="px-4 py-3 text-gray-700">{po.customer_name}</td>
+                  <td className="px-4 py-3 text-gray-700">
+                    {po.currency || "USD"} {Number(po.total_po_value || po.total_value || 0).toLocaleString()}
                   </td>
-                  <td className="px-6 py-4 text-right text-xs text-gray-400">View →</td>
+                  <td className="px-4 py-3 text-gray-700">{po.expiry_date || "—"}</td>
+                  <td className="px-4 py-3">
+                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${STATUS_COLORS[po.status] || "bg-gray-100 text-gray-700"}`}>
+                      {po.status?.replace(/_/g, " ")}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    <button className="text-blue-700 hover:underline">View →</button>
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         )}
       </div>
+    </div>
+  );
+}
+
+const inputCls =
+  "w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-600/30 focus:border-blue-600";
+
+function Field({ label, children }) {
+  return (
+    <div>
+      <label className="block text-sm font-medium text-gray-700 mb-1.5">{label}</label>
+      {children}
     </div>
   );
 }
