@@ -4,7 +4,7 @@ from typing import Generic, TypeVar
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
-from app.models.enums import AuditAction, InvoiceStatus, MilestoneStatus, UserRole
+from app.models.enums import AuditAction, InvoiceStatus, MilestoneStatus, MilestoneSource, POStatus, DocumentType, UserRole
 
 T = TypeVar("T")
 
@@ -266,6 +266,8 @@ class MilestoneUpdate(BaseModel):
 
 
 class MilestoneRead(MilestoneBase):
+    po_id: int | None = None
+    source: MilestoneSource = MilestoneSource.manual
     model_config = ConfigDict(from_attributes=True)
     id: int
     completed_at: datetime | None = None
@@ -391,3 +393,72 @@ class CashFlowSummary(BaseModel):
     draft_count: int
     currency: str
     invoices: list[dict] = Field(default_factory=list)  # ← add this line
+
+
+# ── Purchase Order Schemas ────────────────────────────────────────────────────
+
+class POParseSchema(BaseModel):
+    po_number: str | None = None
+    customer_name: str | None = None
+    po_date: date | None = None
+    expiry_date: date | None = None
+    total_value: Decimal | None = None
+    billing_terms: str | None = None
+    payment_terms: str | None = None
+    ship_to_address: str | None = None
+    bill_to_address: str | None = None
+    authorised_signatory: str | None = None
+    line_items: list[LineItemSchema] = []
+
+class POCreate(BaseModel):
+    po_number: str
+    customer_name: str
+    po_date: date | None = None
+    expiry_date: date | None = None
+    total_value: Decimal = Decimal("0")
+    billing_terms: str | None = None
+    payment_terms: str | None = None
+    ship_to_address: str | None = None
+    bill_to_address: str | None = None
+    authorised_signatory: str | None = None
+    line_items: list[LineItemSchema] = []
+
+class POUpdate(BaseModel):
+    po_number: str | None = None
+    customer_name: str | None = None
+    po_date: date | None = None
+    expiry_date: date | None = None
+    total_value: Decimal | None = None
+    billing_terms: str | None = None
+    payment_terms: str | None = None
+    ship_to_address: str | None = None
+    bill_to_address: str | None = None
+    authorised_signatory: str | None = None
+    line_items: list[LineItemSchema] | None = None
+    status: POStatus | None = None
+
+class PORead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    company_id: int
+    po_number: str
+    customer_name: str
+    po_date: date | None = None
+    expiry_date: date | None = None
+    total_value: Decimal
+    billing_terms: str | None = None
+    payment_terms: str | None = None
+    ship_to_address: str | None = None
+    bill_to_address: str | None = None
+    authorised_signatory: str | None = None
+    line_items: list | None = None
+    status: POStatus
+    document_id: int | None = None
+    uploaded_by: int
+    confirmed_by: int | None = None
+    created_at: datetime
+    updated_at: datetime
+
+class POParseUploadResponse(BaseModel):
+    parsed: POParseSchema
+    file_path: str
