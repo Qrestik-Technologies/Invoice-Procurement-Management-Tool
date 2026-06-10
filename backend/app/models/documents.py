@@ -4,7 +4,7 @@ from sqlalchemy import DateTime, Enum, ForeignKey, String, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
-from app.models.enums import SyncStatus
+from app.models.enums import DocumentType,  SyncStatus
 
 
 class Document(Base):
@@ -19,6 +19,7 @@ class Document(Base):
     sync_status: Mapped[SyncStatus] = mapped_column(
         Enum(SyncStatus), nullable=False, default=SyncStatus.pending
     )
+    document_type: Mapped[DocumentType] = mapped_column(Enum(DocumentType), nullable=False, default=DocumentType.invoice)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     linked_invoice = relationship("Invoice", back_populates="documents")

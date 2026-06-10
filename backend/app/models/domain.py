@@ -16,7 +16,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
-from app.models.enums import AuditAction, InvoiceStatus, MilestoneStatus
+from app.models.enums import AuditAction, InvoiceStatus, MilestoneStatus, MilestoneSource
 
 
 class Customer(Base):
@@ -37,6 +37,8 @@ class Customer(Base):
 
     company = relationship("Company", back_populates="customers")
 
+
+    purchase_order = relationship("PurchaseOrder", back_populates="milestones")
 
 class Invoice(Base):
     __tablename__ = "invoices"
@@ -80,6 +82,8 @@ class Milestone(Base):
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     due_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     amount: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 2), nullable=True)
+    po_id: Mapped[Optional[int]] = mapped_column(ForeignKey("purchase_orders.id"), nullable=True, index=True)
+    source: Mapped[MilestoneSource] = mapped_column(Enum(MilestoneSource), nullable=False, default=MilestoneSource.manual)
     status: Mapped[MilestoneStatus] = mapped_column(
         Enum(MilestoneStatus), nullable=False, default=MilestoneStatus.pending
     )
@@ -130,6 +134,8 @@ class AuditLog(Base):
     entity_id: Mapped[int] = mapped_column(Integer, nullable=False)
     action: Mapped[AuditAction] = mapped_column(Enum(AuditAction), nullable=False)
     detail: Mapped[Optional[str]] = mapped_column(Text, nullable=True)       # JSON diff or notes
+    po_id: Mapped[Optional[int]] = mapped_column(ForeignKey("purchase_orders.id"), nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     changer = relationship("User", back_populates="audit_logs", foreign_keys=[changed_by])
+    purchase_order = relationship("PurchaseOrder", back_populates="invoices")
