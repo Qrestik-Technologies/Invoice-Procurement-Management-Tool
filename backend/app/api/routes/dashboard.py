@@ -6,7 +6,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.security import get_current_user
-from app.models.enums import InvoiceStatus
+from app.models.enums import InvoiceStatus, POStatus
+from app.models.purchase_orders import PurchaseOrder
 from app.models.invoices import Invoice
 from app.models.milestones import Milestone
 from app.models.payments import Payment
@@ -45,6 +46,29 @@ async def dashboard_stats(
         if count:
             status_breakdown[status.value] = count
 
+    # PO stats
+    from datetime import timedelta
+    total_active_pos = await db.scalar(
+        select(func.count(PurchaseOrder.id)).where(PurchaseOrder.status == POStatus.active)
+    )
+    total_po_value = await db.scalar(
+        select(func.coalesce(func.sum(PurchaseOrder.total_value), 0)).where(
+            PurchaseOrder.status == POStatus.active
+        )
+    )
+    pos_expiring_this_month = await db.scalar(
+        select(func.count(PurchaseOrder.id)).where(
+            PurchaseOrder.expiry_date >= today,
+            PurchaseOrder.expiry_date <= today + timedelta(days=30),
+            PurchaseOrder.status.in_([POStatus.active, POStatus.partially_invoiced]),
+        )
+    )
+    pos_not_invoiced = await db.scalar(
+        select(func.count(PurchaseOrder.id)).where(
+            PurchaseOrder.status == POStatus.active,
+        )
+    )
+
     return APIResponse(
         data={
             "total_invoices": total or 0,
@@ -52,6 +76,10 @@ async def dashboard_stats(
             "overdue_count": overdue or 0,
             "received_this_month": float(received_month or 0),
             "status_breakdown": status_breakdown,
+            "total_active_pos": total_active_pos or 0,
+            "total_po_value": float(total_po_value or 0),
+            "pos_expiring_this_month": pos_expiring_this_month or 0,
+            "pos_not_invoiced": pos_not_invoiced or 0,
         }
     )
 
