@@ -8,7 +8,7 @@ import {
   parsePO,
   createPO,
   getPO,
-  raiseInvoice,
+  createInvoiceFromPO,
 } from "../api/purchaseOrders";
 
 import Button from "../components/ui/Button";
@@ -202,7 +202,7 @@ function PODetailModal({ po, open, onClose, onCreateInvoice }) {
   });
 
   const invoiceMut = useMutation({
-    mutationFn: () => raiseInvoice(po.id),
+    mutationFn: () => createInvoiceFromPO(po.id),
     onSuccess: (data) => {
       toast.success("Invoice created from PO — review and dispatch");
       qc.invalidateQueries({ queryKey: ["purchase-orders"] });
@@ -420,21 +420,19 @@ function NewPOModal({ open, onClose }) {
 
       setForm((f) => ({
         ...f,
-        po_number:            p.po_number            || f.po_number,
-        po_date:              p.po_date              || f.po_date,
-        expiry_date:          p.expiry_date          || f.expiry_date,
-        delivery_date:        p.delivery_date        || f.delivery_date,
-        currency:             p.currency             || f.currency,
-        payment_terms:        p.payment_terms        || f.payment_terms,
-        customer_name:        p.customer_name        || f.customer_name,
-        customer_organization:p.customer_organization|| f.customer_organization,
-        customer_address:     p.bill_to_address      || f.customer_address,
-        customer_trn:         p.customer_trn         || f.customer_trn,
-        vendor_name:          p.vendor_name          || f.vendor_name,
-        subtotal:             p.total_value != null ? String(p.total_value) : f.subtotal,
-        net_amount:           p.total_value != null ? String(p.total_value) : f.net_amount,
-        amount_in_words:      p.amount_in_words      || f.amount_in_words,
-        notes:                p.notes                || f.notes,
+        // ── Required extracted fields only ──
+        po_number:        p.po_number                         || f.po_number,
+        po_date:          p.po_date                           || f.po_date,
+        expiry_date:      p.expiry_date                       || f.expiry_date,
+        payment_terms:    p.payment_terms || p.billing_terms  || f.payment_terms,
+        customer_name:    p.customer_name                     || f.customer_name,
+        customer_address: p.bill_to_address || p.ship_to_address || f.customer_address,
+        net_amount:       p.total_value != null ? String(p.total_value) : f.net_amount,
+        subtotal:         p.total_value != null ? String(p.total_value) : f.subtotal,
+        // authorised signatory stored in notes until a dedicated field is added
+        notes: p.authorised_signatory
+          ? `Authorised Signatory: ${p.authorised_signatory}`
+          : (p.notes || f.notes),
         line_items: p.line_items?.length
           ? p.line_items.map((li) => {
               const qty  = parseFloat(li.qty  || 1);
