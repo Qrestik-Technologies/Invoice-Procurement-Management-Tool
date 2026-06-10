@@ -246,6 +246,7 @@ export default function InvoicesPage() {
   const [uploadParsing, setUploadParsing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [newInvDragging, setNewInvDragging] = useState(false);
+  const [selectedInvoice, setSelectedInvoice] = useState(null);
 
   const load = () => {
     const params = statusFilter ? `?status=${statusFilter}` : '';
@@ -354,8 +355,58 @@ export default function InvoicesPage() {
 
   const canEdit = user?.role === 'admin' || user?.role === 'entry';
 
+
+  const STATUS_COLORS_PANEL = {
+    draft: "bg-gray-100 text-gray-600",
+    sent: "bg-blue-100 text-blue-700",
+    received: "bg-green-100 text-green-700",
+    paid: "bg-emerald-100 text-emerald-700",
+    overdue: "bg-red-100 text-red-700",
+    cancelled: "bg-gray-100 text-gray-500",
+  };
   return (
     <div className="p-8">
+      {selectedInvoice && (
+        <div className="fixed inset-0 z-50 flex">
+          <div className="flex-1 bg-black/40" onClick={() => setSelectedInvoice(null)} />
+          <div className="w-[480px] bg-white h-full overflow-y-auto shadow-xl flex flex-col">
+            <div className="flex items-center justify-between px-6 py-4 border-b">
+              <div>
+                <h2 className="text-lg font-semibold">{selectedInvoice.invoice_number}</h2>
+                <p className="text-sm text-gray-500">{selectedInvoice.customer_name || "—"}</p>
+              </div>
+              <button onClick={() => setSelectedInvoice(null)} className="text-gray-400 hover:text-gray-600 text-xl">✕</button>
+            </div>
+            <div className="px-6 py-4 space-y-5 flex-1">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium ${STATUS_COLORS_PANEL[selectedInvoice.status] || "bg-gray-100 text-gray-600"}`}>{selectedInvoice.status}</span>
+                {selectedInvoice.po_id && <span className="text-xs text-indigo-600 bg-indigo-50 px-2.5 py-0.5 rounded-full">Linked to PO</span>}
+              </div>
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                {[["Invoice #", selectedInvoice.invoice_number], ["Customer", selectedInvoice.customer_name || "—"], ["Amount", `${selectedInvoice.currency || ""} ${Number(selectedInvoice.amount || 0).toLocaleString()}`], ["Issue Date", selectedInvoice.issue_date || "—"], ["Due Date", selectedInvoice.due_date || "—"], ["Description", selectedInvoice.description || "—"]].map(([label, value]) => (
+                  <div key={label}>
+                    <p className="text-xs text-gray-400 uppercase tracking-wide">{label}</p>
+                    <p className="font-medium mt-0.5 break-words">{value}</p>
+                  </div>
+                ))}
+              </div>
+              {selectedInvoice.po_id && (
+                <div className="border rounded p-3 text-sm bg-indigo-50">
+                  <p className="text-xs text-gray-400 uppercase tracking-wide mb-1">Linked Purchase Order</p>
+                  <p className="font-medium text-indigo-700">PO ID: {selectedInvoice.po_id}</p>
+                </div>
+              )}
+              <div>
+                <h3 className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-2">Timeline</h3>
+                <div className="space-y-2 text-sm">
+                  <div className="flex gap-2 items-start"><div className="w-2 h-2 rounded-full bg-gray-400 mt-1.5 shrink-0" /><div><p className="font-medium">Created</p><p className="text-gray-400 text-xs">{selectedInvoice.created_at ? new Date(selectedInvoice.created_at).toLocaleString() : "—"}</p></div></div>
+                  {selectedInvoice.received_at && <div className="flex gap-2 items-start"><div className="w-2 h-2 rounded-full bg-green-500 mt-1.5 shrink-0" /><div><p className="font-medium">Received</p><p className="text-gray-400 text-xs">{new Date(selectedInvoice.received_at).toLocaleString()}</p></div></div>}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       <PageHeader
         title={meta.title}
         organizationName={meta.organizationName}
@@ -414,7 +465,7 @@ export default function InvoicesPage() {
             </thead>
             <tbody>
               {invoices.map(inv => (
-                <tr key={inv.id} className="border-b border-border last:border-0 hover:bg-gray-50">
+                <tr key={inv.id} className="border-b border-border last:border-0 hover:bg-gray-50 cursor-pointer" onClick={() => setSelectedInvoice(inv)}>
                   <td className="px-5 py-3 font-medium text-[#111827]">{inv.invoice_number}</td>
                   <td className="px-5 py-3 text-[#6B7280]">
                     {inv.customer_name || '—'}
