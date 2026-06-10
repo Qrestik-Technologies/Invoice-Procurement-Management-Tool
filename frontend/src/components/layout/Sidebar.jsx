@@ -10,7 +10,7 @@ import {
   Settings,
   X,
   ChevronLeft,
-  LogOut,, ClipboardList} from 'lucide-react';
+  LogOut, ClipboardList} from 'lucide-react';
 import { cn } from '../../utils/cn';
 import { RoleBadge } from '../ui/Badge';
 import { useAuth } from '../../context/AuthContext';
