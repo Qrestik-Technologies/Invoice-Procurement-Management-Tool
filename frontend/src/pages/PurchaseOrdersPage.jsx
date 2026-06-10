@@ -111,7 +111,7 @@ function LineItemsTable({ items, onChange, readOnly = false }) {
     onChange(next);
   };
 
-  const subtotal = (items || []).reduce((s, r) => s + (parseFloat(r.total_amt) || 0), 0);
+  const subtotal = items.reduce((s, r) => s + (parseFloat(r.total_amt) || 0), 0);
 
   return (
     <div className="space-y-2">
@@ -311,8 +311,8 @@ function NewPOModal({ open, onClose }) {
   if (!open) return null;
 
   /* totals */
-  const subtotal    = (form.line_items || []).reduce((s, r) => s + (parseFloat(r.total_amt) || 0), 0);
-  const vatTotal    = (form.line_items || []).reduce((s, r) => s + (parseFloat(r.vat_amt)   || 0), 0);
+  const subtotal    = form.line_items.reduce((s, r) => s + (parseFloat(r.total_amt) || 0), 0);
+  const vatTotal    = form.line_items.reduce((s, r) => s + (parseFloat(r.vat_amt)   || 0), 0);
   const netAmount   = subtotal; // VAT is 0 per the template
 
   return (
@@ -500,7 +500,7 @@ export default function PurchaseOrdersPage() {
     queryFn: () => listPOs(tab === "all" ? undefined : { status: tab }),
   });
 
-  const totalValue  = (pos || []).reduce((s, p) => s + Number(p.total_value || 0), 0);
+  const totalValue  = pos.reduce((s, p) => s + Number(p.total_value || 0), 0);
   const activeCount = pos.filter((p) => p.status === "active").length;
 
   return (
