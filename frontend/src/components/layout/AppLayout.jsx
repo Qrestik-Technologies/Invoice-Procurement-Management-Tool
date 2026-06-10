@@ -11,6 +11,7 @@ const LOGO_SRC = '/Qrestik%20Technologies-01.png';
 const NAV = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard', end: true },
   { to: '/invoices', icon: FileText, label: 'Invoices' },
+  { to: '/purchase-orders', icon: FileText, label: 'Purchase Orders' },
   { to: '/milestones', icon: Milestone, label: 'Milestones' },
   { to: '/customers', icon: Users, label: 'Customers' },
   { to: '/reminders', icon: Bell, label: 'Reminders' },
