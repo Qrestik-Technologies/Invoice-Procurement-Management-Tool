@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { listPOs, parsePO, createPO, confirmPO, closePO, raiseInvoice, getPO } from "../api/purchaseOrders";
+import { listPOs, parsePO, createPO, confirmPO, closePO, raiseInvoice, getPO, getInvoicesForPO } from "../api/purchaseOrders";
 
 const STATUS_COLORS = {
   draft:              "bg-gray-100 text-gray-700",
@@ -9,6 +9,40 @@ const STATUS_COLORS = {
   partially_invoiced: "bg-yellow-100 text-yellow-700",
   closed:             "bg-red-100 text-red-700",
 };
+
+
+function LinkedInvoices({ poId }) {
+  const { data, isLoading } = useQuery({
+    queryKey: ["po-invoices", poId],
+    queryFn: () => getInvoicesForPO(poId).then(r => r.data.data),
+  });
+  if (isLoading) return <p className="text-xs text-gray-400">Loading invoices...</p>;
+  if (!data?.length) return (
+    <div>
+      <h3 className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-2">Invoices</h3>
+      <p className="text-sm text-gray-400">No invoices raised yet.</p>
+    </div>
+  );
+  return (
+    <div>
+      <h3 className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-2">Invoices</h3>
+      <div className="space-y-2">
+        {data.map(inv => (
+          <div key={inv.id} className="border rounded p-3 text-sm flex justify-between items-center">
+            <div>
+              <p className="font-medium">{inv.invoice_number}</p>
+              <p className="text-xs text-gray-400">{inv.issue_date} · Due {inv.due_date}</p>
+            </div>
+            <div className="text-right">
+              <p className="font-medium">USD {Number(inv.amount).toLocaleString()}</p>
+              <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">{inv.status}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 function PODetailPanel({ po, onClose, qc }) {
   const confirmMutation = useMutation({
@@ -162,6 +196,8 @@ function PODetailPanel({ po, onClose, qc }) {
                 </div>
               )}
             </div>
+
+          <LinkedInvoices poId={d.id} />
           </div>
         </div>
       </div>

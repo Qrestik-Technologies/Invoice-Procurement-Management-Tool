@@ -9,3 +9,4 @@ export const confirmPO     = (id) => client.put(`/purchase-orders/${id}`, { stat
 export const closePO       = (id) => client.post(`/purchase-orders/${id}/close`);
 
 export const raiseInvoice   = (id) => client.post(`/purchase-orders/${id}/create-invoice`);
+export const getInvoicesForPO = (poId) => client.get(`/purchase-orders/${poId}/invoices`);

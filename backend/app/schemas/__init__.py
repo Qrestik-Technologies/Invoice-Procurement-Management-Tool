@@ -238,6 +238,7 @@ class InvoiceRead(InvoiceBase):
     onedrive_item_id: str | None = None
     received_at: datetime | None = None
     created_at: datetime
+    po_id: int | None = None
     updated_at: datetime
 
 

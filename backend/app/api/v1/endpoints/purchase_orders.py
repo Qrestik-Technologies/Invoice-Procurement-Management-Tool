@@ -201,3 +201,20 @@ async def create_invoice_from_po(
     await db.commit()
     await db.refresh(invoice)
     return APIResponse(data=InvoiceRead.model_validate(invoice))
+
+
+@router.get("/{po_id}/invoices", response_model=APIResponse[list[InvoiceRead]])
+async def list_invoices_for_po(
+    po_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(require_entry_or_above),
+    company_id: int | None = Depends(get_company_scope),
+):
+    from app.models.domain import Invoice
+    from sqlalchemy import select
+    po = await _get_po_or_404(db, po_id, company_id)
+    result = await db.execute(
+        select(Invoice).where(Invoice.po_id == po.id).order_by(Invoice.created_at.desc())
+    )
+    invoices = result.scalars().all()
+    return APIResponse(data=[InvoiceRead.model_validate(i) for i in invoices])
