@@ -23,12 +23,18 @@ async def list_milestones(
     _=Depends(require_any_role),
     company_id: Annotated[int | None, Depends(get_company_scope)] = None,
     invoice_id: int | None = Query(None),
+    po_id: int | None = Query(None),
 ):
     q = select(Milestone)
     if company_id is not None:
-        q = q.join(Invoice).where(Invoice.company_id == company_id)
+        q = q.where(
+            (Milestone.invoice_id.in_(select(Invoice.id).where(Invoice.company_id == company_id))) |
+            (Milestone.po_id.in_(select(PurchaseOrder.id).where(PurchaseOrder.company_id == company_id)))
+        )
     if invoice_id:
         q = q.where(Milestone.invoice_id == invoice_id)
+    if po_id:
+        q = q.where(Milestone.po_id == po_id)
     result = await db.execute(q.order_by(Milestone.end_date))
     return APIResponse(data=[MilestoneRead.model_validate(m) for m in result.scalars().all()])
 
