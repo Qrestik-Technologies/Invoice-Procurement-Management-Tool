@@ -163,6 +163,14 @@ async def cash_flow_summary(
         if i.status not in (InvoiceStatus.received, InvoiceStatus.paid)
     ]
 
+    from app.models.purchase_orders import PurchaseOrder
+    from app.models.enums import POStatus
+    po_q = select(PurchaseOrder)
+    if company_id is not None:
+        po_q = po_q.where(PurchaseOrder.company_id == company_id)
+    po_result = await db.execute(po_q)
+    pos = po_result.scalars().all()
+
     return APIResponse(data=CashFlowSummary(
         period_start=period_start,
         period_end=period_end,
@@ -174,6 +182,10 @@ async def cash_flow_summary(
         draft_count=sum(1 for i in invoices if i.status == InvoiceStatus.draft),
         currency=detected_currency,
         invoices=invoice_rows,
+        po_active_count=sum(1 for p in pos if p.status == POStatus.active),
+        po_draft_count=sum(1 for p in pos if p.status == POStatus.draft),
+        po_invoiced_count=sum(1 for p in pos if p.status in (POStatus.invoiced, POStatus.partially_invoiced)),
+        po_total_value=sum((p.total_value for p in pos), Decimal("0")),
     ))
 
 

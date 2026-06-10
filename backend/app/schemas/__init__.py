@@ -306,17 +306,6 @@ class ReminderRead(BaseModel):
     created_at: datetime
 
 
-class CashFlowSummary(BaseModel):
-    period_start: date
-    period_end: date
-    total_invoiced: Decimal
-    total_received: Decimal
-    total_outstanding: Decimal
-    overdue_count: int
-    paid_count: int
-    draft_count: int
-    currency: str
-
 
 class AuditLogRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -393,7 +382,11 @@ class CashFlowSummary(BaseModel):
     paid_count: int
     draft_count: int
     currency: str
-    invoices: list[dict] = Field(default_factory=list)  # ← add this line
+    invoices: list[dict] = Field(default_factory=list)
+    po_active_count: int = 0
+    po_draft_count: int = 0
+    po_invoiced_count: int = 0
+    po_total_value: Decimal = Decimal("0")
 
 
 # ── Purchase Order Schemas ────────────────────────────────────────────────────

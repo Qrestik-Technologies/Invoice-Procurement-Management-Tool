@@ -74,6 +74,14 @@ export default function DashboardPage() {
         <StatCard icon={Users} label="Drafts" value={summary?.draft_count} color="bg-amber-400" to="/invoices?status=draft" />
       </div>
 
+      <h2 className="mb-3 text-sm font-semibold text-[#6B7280] uppercase tracking-wide">Purchase Orders</h2>
+      <div className="mb-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <StatCard icon={FileText} label="Active POs" value={summary?.po_active_count ?? "—"} color="bg-indigo-500" to="/purchase-orders" />
+        <StatCard icon={FileText} label="Draft POs" value={summary?.po_draft_count ?? "—"} color="bg-gray-400" to="/purchase-orders" />
+        <StatCard icon={FileText} label="Invoiced POs" value={summary?.po_invoiced_count ?? "—"} color="bg-blue-500" to="/purchase-orders" />
+        <StatCard icon={TrendingUp} label="Total PO Value" value={summary ? `${summary.currency} ${Number(summary.po_total_value).toLocaleString()}` : "—"} color="bg-violet-500" to="/purchase-orders" />
+      </div>
+
       <div className="rounded-xl border border-border bg-white shadow-sm">
         <div className="flex items-center justify-between border-b border-border px-6 py-4">
           <h2 className="font-semibold text-[#111827]">Recent Invoices — {organization?.name || '…'}</h2>
