@@ -8,7 +8,7 @@ import {
   parsePO,
   createPO,
   getPO,
-  createInvoiceFromPO,
+  raiseInvoice,
 } from "../api/purchaseOrders";
 
 import Button from "../components/ui/Button";
@@ -202,7 +202,7 @@ function PODetailModal({ po, open, onClose, onCreateInvoice }) {
   });
 
   const invoiceMut = useMutation({
-    mutationFn: () => createInvoiceFromPO(po.id),
+    mutationFn: () => raiseInvoice(po.id),
     onSuccess: (data) => {
       toast.success("Invoice created from PO — review and dispatch");
       qc.invalidateQueries({ queryKey: ["purchase-orders"] });
