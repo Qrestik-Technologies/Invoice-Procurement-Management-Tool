@@ -11,6 +11,7 @@ import { Input, Select, Textarea } from '../ui/FormFields';
 import { fetchCustomers } from '../../api/customers';
 import { fetchMilestones } from '../../api/milestones';
 import { createInvoice } from '../../api/invoices';
+import { listPOs } from '../../api/purchaseOrders';
 import { uploadDocument } from '../../api/documents';
 import { formatCurrency } from '../../utils/format';
 import { cn } from '../../utils/cn';
@@ -44,6 +45,7 @@ export default function NewInvoiceDrawer({ open, onClose }) {
   const [uploading, setUploading] = useState(false);
 
   const { data: customers = [] } = useQuery({ queryKey: ['customers'], queryFn: fetchCustomers, enabled: open });
+  const { data: poList = [] } = useQuery({ queryKey: ['purchase-orders', 'active'], queryFn: () => listPOs({ status: 'active' }).then(r => r.data.data), enabled: open });
   const { data: milestones = [] } = useQuery({ queryKey: ['milestones'], queryFn: fetchMilestones, enabled: open });
 
   const { register, control, handleSubmit, watch, reset, setValue, formState: { errors } } = useForm({
@@ -81,6 +83,7 @@ export default function NewInvoiceDrawer({ open, onClose }) {
 
   const buildPayload = (data, status) => ({
     customer_id: Number(data.customerId),
+      po_id: data.poId ? Number(data.poId) : undefined,
     milestone_id: data.milestoneId ? Number(data.milestoneId) : null,
     invoice_date: data.invoiceDate,
     line_items: lineItems.map((item) => ({
@@ -152,6 +155,15 @@ export default function NewInvoiceDrawer({ open, onClose }) {
             <Select label="Customer" error={fieldError('customerId')} className={cn(missingFields.includes('customer_name') && 'ring-2 ring-red-300 rounded-lg')} {...register('customerId')}>
               <option value="">Select customer…</option>
               {customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </Select>
+            <Select label="Linked PO (optional)" {...register('poId')} onChange={(e) => {
+                const po = poList.find(p => String(p.id) === e.target.value);
+                if (po) {
+                  setValue('poId', String(po.id));
+                }
+              }}>
+              <option value="">— None —</option>
+              {poList.map((po) => <option key={po.id} value={po.id}>{po.po_number} — {po.customer_name}</option>)}
             </Select>
             <Select label="Linked Milestone" {...register('milestoneId')}>
               <option value="">None</option>
