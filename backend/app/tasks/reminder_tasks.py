@@ -11,6 +11,7 @@ from app.core.config import settings
 from app.models.domain import Customer, Invoice, Milestone
 from app.models.enums import InvoiceStatus, ReminderStatus, ReminderType, TemplateType
 from app.models.reminder_logs import ReminderLog
+from app.services.email_service import send_internal_alert
 
 logger = logging.getLogger(__name__)
 
@@ -147,5 +148,61 @@ def check_emcor_monthly_alert():
                 ReminderType.payment_reminder.value,
                 settings.MILESTONE_ALERT_EMAILS,
             )
+    finally:
+        session.close()
+
+
+@celery_app.task
+def check_po_expiry_warnings():
+    """Send warning email for POs expiring within 30 days."""
+    from app.models.purchase_orders import PurchaseOrder
+    from app.models.enums import POStatus
+    import datetime as dt
+    session = SessionLocal()
+    try:
+        today = date.today()
+        cutoff = today + dt.timedelta(days=30)
+        expiring_pos = session.execute(
+            select(PurchaseOrder).where(
+                PurchaseOrder.expiry_date <= cutoff,
+                PurchaseOrder.expiry_date >= today,
+                PurchaseOrder.status.in_([POStatus.active, POStatus.partially_invoiced]),
+            )
+        ).scalars().all()
+        for po in expiring_pos:
+            try:
+                send_internal_alert(
+                    subject=f"PO Expiry Warning: {po.po_number}",
+                    body=f"PO {po.po_number} for {po.customer_name} expires on {po.expiry_date}.",
+                    recipients=settings.MILESTONE_ALERT_EMAILS,
+                )
+            except Exception as e:
+                logger.error("Failed to send PO expiry warning for PO %s: %s", po.id, e)
+    finally:
+        session.close()
+
+
+@celery_app.task
+def check_po_not_invoiced():
+    """Send alert for active POs that have no linked invoices."""
+    from app.models.purchase_orders import PurchaseOrder
+    from app.models.enums import POStatus
+    session = SessionLocal()
+    try:
+        uninvoiced_pos = session.execute(
+            select(PurchaseOrder).where(
+                PurchaseOrder.status == POStatus.active,
+            )
+        ).scalars().all()
+        for po in uninvoiced_pos:
+            if not po.invoices:
+                try:
+                    send_internal_alert(
+                        subject=f"PO Not Invoiced: {po.po_number}",
+                        body=f"PO {po.po_number} for {po.customer_name} (value: {po.total_value}) has no invoices raised.",
+                        recipients=settings.MILESTONE_ALERT_EMAILS,
+                    )
+                except Exception as e:
+                    logger.error("Failed to send PO not-invoiced alert for PO %s: %s", po.id, e)
     finally:
         session.close()
