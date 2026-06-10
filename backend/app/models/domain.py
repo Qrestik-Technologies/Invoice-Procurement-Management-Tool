@@ -38,7 +38,6 @@ class Customer(Base):
     company = relationship("Company", back_populates="customers")
 
 
-    purchase_order = relationship("PurchaseOrder", back_populates="milestones")
 
 class Invoice(Base):
     __tablename__ = "invoices"
@@ -94,6 +93,7 @@ class Milestone(Base):
     )
 
     invoice = relationship("Invoice", back_populates="milestones")
+    purchase_order = relationship("PurchaseOrder", back_populates="milestones")
 
 
 class Payment(Base):
