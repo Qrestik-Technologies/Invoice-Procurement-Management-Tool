@@ -571,46 +571,32 @@ function NewPOModal({ open, onClose }) {
 
           {/* Customer / Vendor */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Bill To — Customer */}
             <div className="rounded-xl border border-gray-200 p-4 space-y-3">
               <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Bill To (Customer)</p>
               <Field label="Customer Name">
-                <input className={ic} placeholder="Raqmiyat Information Technology" value={form.customer_name} onChange={set("customer_name")} />
+                <input className={ic} placeholder="e.g. EMCOR Facilities Services" value={form.customer_name} onChange={set("customer_name")} />
               </Field>
-              <Field label="Organization">
-                <input className={ic} value={form.customer_organization} onChange={set("customer_organization")} />
-              </Field>
-              <Field label="Address">
+              <Field label="Bill To / Ship To Address">
                 <input className={ic} placeholder="P.O. Box, City, Country" value={form.customer_address} onChange={set("customer_address")} />
               </Field>
-              <div className="grid grid-cols-2 gap-3">
-                <Field label="Phone">
-                  <input className={ic} value={form.customer_phone} onChange={set("customer_phone")} />
-                </Field>
-                <Field label="TRN No.">
-                  <input className={ic} placeholder="300270962800003" value={form.customer_trn} onChange={set("customer_trn")} />
-                </Field>
-              </div>
+              <Field label="Authorised Signatory">
+                <input className={ic} placeholder="Name of authorised signatory" value={form.notes} onChange={set("notes")} />
+              </Field>
             </div>
 
+            {/* Vendor — Us */}
             <div className="rounded-xl border border-gray-200 p-4 space-y-3">
               <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">To (Vendor / Us)</p>
               <Field label="Vendor Name">
                 <input className={ic} value={form.vendor_name} onChange={set("vendor_name")} />
               </Field>
-              <Field label="Address">
-                <input className={ic} value={form.vendor_address} onChange={set("vendor_address")} />
+              <Field label="Expiry Date">
+                <input type="date" className={ic} value={form.expiry_date} onChange={set("expiry_date")} />
               </Field>
-              <Field label="Bank">
-                <input className={ic} value={form.vendor_bank} onChange={set("vendor_bank")} />
+              <Field label="Delivery Date">
+                <input type="date" className={ic} value={form.delivery_date} onChange={set("delivery_date")} />
               </Field>
-              <div className="grid grid-cols-2 gap-3">
-                <Field label="City">
-                  <input className={ic} value={form.vendor_city} onChange={set("vendor_city")} />
-                </Field>
-                <Field label="Expiry Date">
-                  <input type="date" className={ic} value={form.expiry_date} onChange={set("expiry_date")} />
-                </Field>
-              </div>
             </div>
           </div>
 
@@ -624,11 +610,8 @@ function NewPOModal({ open, onClose }) {
           <div className="flex justify-end">
             <div className="w-80 rounded-xl border border-gray-200 bg-gray-50 divide-y divide-gray-200 text-sm">
               {[
-                ["Total",                    subtotal.toLocaleString("en-US", { minimumFractionDigits: 2 })],
-                ["Total Amount Before VAT",  subtotal.toLocaleString("en-US", { minimumFractionDigits: 2 })],
-                ["Header Discount",          "0.00"],
-                ["VAT Amount",               vatTotal.toLocaleString("en-US", { minimumFractionDigits: 2 })],
-                ["VAT Reversal",             "0.00"],
+                ["Subtotal",   subtotal.toLocaleString("en-US", { minimumFractionDigits: 2 })],
+                ["VAT Amount", vatTotal.toLocaleString("en-US", { minimumFractionDigits: 2 })],
               ].map(([label, value]) => (
                 <div key={label} className="flex justify-between px-4 py-2 text-gray-600">
                   <span>{label}</span>
@@ -636,25 +619,10 @@ function NewPOModal({ open, onClose }) {
                 </div>
               ))}
               <div className="flex justify-between px-4 py-3 font-semibold text-gray-900 bg-white rounded-b-xl">
-                <span>Net Amount After VAT</span>
+                <span>Total PO Value</span>
                 <span>{netAmount.toLocaleString("en-US", { minimumFractionDigits: 2 })}</span>
               </div>
             </div>
-          </div>
-
-          <Field label="Amount in Words">
-            <input className={ic} placeholder="USD Sixty Four Thousand Five Hundred Only"
-              value={form.amount_in_words} onChange={set("amount_in_words")} />
-          </Field>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Field label="Delivery Instructions">
-              <input className={ic} placeholder="Please advice us when the shipment is ready for collection"
-                value={form.notes} onChange={set("notes")} />
-            </Field>
-            <Field label="Delivery Date">
-              <input type="date" className={ic} value={form.delivery_date} onChange={set("delivery_date")} />
-            </Field>
           </div>
 
           <div className="flex justify-end gap-2 border-t border-gray-100 pt-4">
