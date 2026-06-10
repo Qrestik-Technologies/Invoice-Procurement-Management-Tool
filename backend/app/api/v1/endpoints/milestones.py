@@ -29,7 +29,7 @@ async def list_milestones(
         q = q.join(Invoice).where(Invoice.company_id == company_id)
     if invoice_id:
         q = q.where(Milestone.invoice_id == invoice_id)
-    result = await db.execute(q.order_by(Milestone.due_date))
+    result = await db.execute(q.order_by(Milestone.end_date))
     return APIResponse(data=[MilestoneRead.model_validate(m) for m in result.scalars().all()])
 
 

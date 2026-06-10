@@ -141,7 +141,7 @@ async def update_purchase_order(
                 invoice_id=None,
                 title=f"PO {po.po_number} — {po.customer_name}",
                 description=f"Auto-created from PO {po.po_number}",
-                due_date=po.expiry_date,
+                end_date=po.expiry_date,
                 amount=po.total_value,
                 status=MilestoneStatus.pending,
                 po_id=po.id,
@@ -167,3 +167,37 @@ async def close_purchase_order(
     await db.commit()
     await db.refresh(po)
     return APIResponse(data=PORead.model_validate(po))
+
+
+@router.post("/{po_id}/create-invoice", response_model=APIResponse[InvoiceRead])
+async def create_invoice_from_po(
+    po_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(require_entry_or_above),
+    company_id: int | None = Depends(get_company_scope),
+):
+    from app.models.domain import Invoice
+    from datetime import timedelta
+    po = await _get_po_or_404(db, po_id, company_id)
+    if po.status not in (POStatus.active, POStatus.partially_invoiced):
+        raise HTTPException(status_code=400, detail="PO must be active to raise an invoice")
+    today = date.today()
+    invoice = Invoice(
+        company_id=po.company_id,
+        uploaded_by=current_user.id,
+        invoice_number=f"INV-{po.po_number}-{uuid.uuid4().hex[:6].upper()}",
+        customer_name=po.customer_name,
+        amount=po.total_value,
+        currency="USD",
+        issue_date=today,
+        due_date=today + timedelta(days=30),
+        status=InvoiceStatus.draft,
+        description=f"Invoice raised from PO {po.po_number}",
+        po_id=po.id,
+    )
+    db.add(invoice)
+    po.status = POStatus.invoiced
+    await write_audit(db, current_user.id, "invoice", 0, AuditAction.created)
+    await db.commit()
+    await db.refresh(invoice)
+    return APIResponse(data=InvoiceRead.model_validate(invoice))

@@ -7,3 +7,5 @@ export const getPO         = (id) => client.get(`/purchase-orders/${id}`);
 export const updatePO      = (id, data) => client.put(`/purchase-orders/${id}`, data);
 export const confirmPO     = (id) => client.put(`/purchase-orders/${id}`, { status: 'active' });
 export const closePO       = (id) => client.post(`/purchase-orders/${id}/close`);
+
+export const raiseInvoice   = (id) => client.post(`/purchase-orders/${id}/create-invoice`);

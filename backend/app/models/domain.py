@@ -78,10 +78,10 @@ class Milestone(Base):
     __tablename__ = "milestones"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    invoice_id: Mapped[int] = mapped_column(ForeignKey("invoices.id"), nullable=False)
+    invoice_id: Mapped[Optional[int]] = mapped_column(ForeignKey("invoices.id"), nullable=True)
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    due_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    end_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     amount: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 2), nullable=True)
     po_id: Mapped[Optional[int]] = mapped_column(ForeignKey("purchase_orders.id"), nullable=True, index=True)
     source: Mapped[MilestoneSource] = mapped_column(Enum(MilestoneSource), nullable=False, default=MilestoneSource.manual)
@@ -102,7 +102,7 @@ class Payment(Base):
     __tablename__ = "payments"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    invoice_id: Mapped[int] = mapped_column(ForeignKey("invoices.id"), nullable=False)
+    invoice_id: Mapped[Optional[int]] = mapped_column(ForeignKey("invoices.id"), nullable=True)
     marked_by: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
     amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
     currency: Mapped[str] = mapped_column(String(3), nullable=False, default="USD")
@@ -118,7 +118,7 @@ class Reminder(Base):
     __tablename__ = "reminders"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    invoice_id: Mapped[int] = mapped_column(ForeignKey("invoices.id"), nullable=False)
+    invoice_id: Mapped[Optional[int]] = mapped_column(ForeignKey("invoices.id"), nullable=True)
     scheduled_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     sent_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
