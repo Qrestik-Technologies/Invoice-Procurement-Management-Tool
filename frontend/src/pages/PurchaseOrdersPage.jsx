@@ -1,12 +1,14 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, Download, FileText, Loader2, X, Upload, CheckCircle2, Trash2 } from "lucide-react";
+import { Plus, Download, FileText, Loader2, X, Upload, CheckCircle2, Trash2, ArrowRight, Eye, Receipt } from "lucide-react";
 import toast from "react-hot-toast";
 
 import {
   listPOs,
   parsePO,
   createPO,
+  getPO,
+  createInvoiceFromPO,
 } from "../api/purchaseOrders";
 
 import Button from "../components/ui/Button";
@@ -26,36 +28,29 @@ const STATUS_COLORS = {
 
 /* ─── Empty form ────────────────────────────────────────────────────────────── */
 const EMPTY_FORM = {
-  // Header
   po_number:            "",
   po_date:              "",
   payment_terms:        "",
   currency:             "USD",
-  // Vendor (us)
   vendor_name:          "QRESTIK TECHNOLOGIES LLC",
   vendor_address:       "UMM HURRAIR",
   vendor_bank:          "RAKBANK",
   vendor_city:          "Dubai",
-  // Customer (them)
   customer_name:        "",
   customer_organization:"",
   customer_address:     "",
   customer_trn:         "",
   customer_phone:       "",
   customer_fax:         "",
-  // Dates
   expiry_date:          "",
   delivery_date:        "",
-  // Totals
   subtotal:             "",
   header_discount:      "0.00",
   vat_amount:           "0.00",
   vat_reversal:         "0.00",
   net_amount:           "",
   amount_in_words:      "",
-  // Notes
   notes:                "",
-  // Line items
   line_items: [],
 };
 
@@ -71,7 +66,6 @@ const EMPTY_LINE = {
   total_amt:   "",
 };
 
-/* ─── Shared input class ────────────────────────────────────────────────────── */
 const ic = "w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-600/30 focus:border-blue-600";
 
 function Field({ label, children, className = "" }) {
@@ -92,7 +86,6 @@ function LineItemsTable({ items, onChange, readOnly = false }) {
     const next = items.map((row, idx) => {
       if (idx !== i) return row;
       const updated = { ...row, [field]: val };
-      // recalc amount & total when numeric fields change
       if (["qty", "rate", "discount", "vat_pct"].includes(field)) {
         const qty  = parseFloat(field === "qty"  ? val : updated.qty)  || 0;
         const rate = parseFloat(field === "rate" ? val : updated.rate) || 0;
@@ -140,34 +133,32 @@ function LineItemsTable({ items, onChange, readOnly = false }) {
           <tbody className="divide-y divide-gray-100">
             {items.length === 0 && (
               <tr>
-                <td colSpan={11} className="px-4 py-5 text-center text-sm text-gray-400">
-                  No line items yet.
-                </td>
+                <td colSpan={11} className="px-4 py-5 text-center text-sm text-gray-400">No line items yet.</td>
               </tr>
             )}
             {items.map((row, i) => (
               <tr key={i} className="hover:bg-gray-50/50">
                 <td className="px-2 py-1.5 text-gray-500 w-8">{i + 1}</td>
                 <td className="px-2 py-1.5 min-w-[180px]">
-                  <input className={ic} value={row.description} onChange={(e) => update(i, "description", e.target.value)} placeholder="Description" />
+                  <input className={ic} value={row.description} onChange={(e) => update(i, "description", e.target.value)} placeholder="Description" readOnly={readOnly} />
                 </td>
                 <td className="px-2 py-1.5 w-16">
-                  <input type="number" className={ic} value={row.qty} onChange={(e) => update(i, "qty", e.target.value)} />
+                  <input type="number" className={ic} value={row.qty} onChange={(e) => update(i, "qty", e.target.value)} readOnly={readOnly} />
                 </td>
                 <td className="px-2 py-1.5 w-24">
-                  <input type="number" step="0.01" className={ic} value={row.rate} onChange={(e) => update(i, "rate", e.target.value)} />
+                  <input type="number" step="0.01" className={ic} value={row.rate} onChange={(e) => update(i, "rate", e.target.value)} readOnly={readOnly} />
                 </td>
                 <td className="px-2 py-1.5 w-24">
-                  <input type="number" step="0.01" className={ic} value={row.amount} onChange={(e) => update(i, "amount", e.target.value)} readOnly />
+                  <input type="number" step="0.01" className={ic} value={row.amount} readOnly />
                 </td>
                 <td className="px-2 py-1.5 w-20">
-                  <input type="number" step="0.01" className={ic} value={row.discount} onChange={(e) => update(i, "discount", e.target.value)} />
+                  <input type="number" step="0.01" className={ic} value={row.discount} onChange={(e) => update(i, "discount", e.target.value)} readOnly={readOnly} />
                 </td>
                 <td className="px-2 py-1.5 w-24">
                   <input type="number" step="0.01" className={ic} value={row.taxable_amt} readOnly />
                 </td>
                 <td className="px-2 py-1.5 w-16">
-                  <input type="number" step="0.01" className={ic} value={row.vat_pct} onChange={(e) => update(i, "vat_pct", e.target.value)} />
+                  <input type="number" step="0.01" className={ic} value={row.vat_pct} onChange={(e) => update(i, "vat_pct", e.target.value)} readOnly={readOnly} />
                 </td>
                 <td className="px-2 py-1.5 w-20">
                   <input type="number" step="0.01" className={ic} value={row.vat_amt} readOnly />
@@ -176,9 +167,11 @@ function LineItemsTable({ items, onChange, readOnly = false }) {
                   <input type="number" step="0.01" className={ic} value={row.total_amt} readOnly />
                 </td>
                 <td className="px-2 py-1.5 w-8">
-                  <button type="button" onClick={() => remove(i)} className="rounded p-1 text-gray-400 hover:bg-red-50 hover:text-red-600">
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
+                  {!readOnly && (
+                    <button type="button" onClick={() => remove(i)} className="rounded p-1 text-gray-400 hover:bg-red-50 hover:text-red-600">
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  )}
                 </td>
               </tr>
             ))}
@@ -198,6 +191,214 @@ function LineItemsTable({ items, onChange, readOnly = false }) {
   );
 }
 
+/* ─── PO Detail Modal ───────────────────────────────────────────────────────── */
+function PODetailModal({ po, open, onClose, onCreateInvoice }) {
+  const qc = useQueryClient();
+
+  const { data: detail, isLoading } = useQuery({
+    queryKey: ["purchase-order", po?.id],
+    queryFn: () => getPO(po.id),
+    enabled: open && !!po?.id,
+  });
+
+  const invoiceMut = useMutation({
+    mutationFn: () => createInvoiceFromPO(po.id),
+    onSuccess: (data) => {
+      toast.success("Invoice created from PO — review and dispatch");
+      qc.invalidateQueries({ queryKey: ["purchase-orders"] });
+      qc.invalidateQueries({ queryKey: ["invoices"] });
+      if (onCreateInvoice) onCreateInvoice(data);
+      onClose();
+    },
+    onError: (e) => toast.error(e?.response?.data?.detail || "Failed to create invoice"),
+  });
+
+  if (!open || !po) return null;
+
+  const d = detail || po;
+  const lineItems = d.line_items || [];
+  const subtotal = lineItems.reduce((s, r) => s + (parseFloat(r.total_amt) || 0), 0);
+  const vatTotal = lineItems.reduce((s, r) => s + (parseFloat(r.vat_amt) || 0), 0);
+
+  const canInvoice = ["active", "partially_invoiced"].includes(d.status);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+      <div className="relative w-full max-w-5xl max-h-[92vh] overflow-y-auto bg-white rounded-2xl shadow-2xl flex flex-col">
+
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 sticky top-0 bg-white z-10">
+          <div>
+            <h2 className="text-lg font-semibold text-gray-900">PO #{d.po_number}</h2>
+            <p className="text-sm text-gray-500">{d.customer_name}</p>
+          </div>
+          <div className="flex items-center gap-2">
+            {canInvoice && (
+              <button
+                onClick={() => invoiceMut.mutate()}
+                disabled={invoiceMut.isPending}
+                className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg bg-blue-700 text-white hover:bg-blue-800 disabled:opacity-50"
+              >
+                {invoiceMut.isPending
+                  ? <><Loader2 className="h-4 w-4 animate-spin" /> Creating…</>
+                  : <><Receipt className="h-4 w-4" /> Raise Invoice from PO</>
+                }
+              </button>
+            )}
+            <button onClick={onClose} className="rounded-lg p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100">
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+        </div>
+
+        {isLoading ? (
+          <div className="p-10 flex justify-center"><Loader2 className="w-6 h-6 text-blue-600 animate-spin" /></div>
+        ) : (
+          <div className="p-6 space-y-6">
+
+            {/* Status badge */}
+            <div className="flex items-center gap-3">
+              <span className={`px-3 py-1 rounded-full text-xs font-semibold ${STATUS_COLORS[d.status] || "bg-gray-100 text-gray-700"}`}>
+                {d.status?.replace(/_/g, " ")}
+              </span>
+              {d.expiry_date && (
+                <span className="text-xs text-gray-500">Expires: {d.expiry_date}</span>
+              )}
+            </div>
+
+            {/* Header fields */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              {[
+                ["PO Number",      d.po_number],
+                ["PO Date",        d.po_date || "—"],
+                ["Payment Terms",  d.payment_terms || "—"],
+                ["Currency",       d.currency || "USD"],
+                ["Delivery Date",  d.delivery_date || "—"],
+                ["Expiry Date",    d.expiry_date || "—"],
+                ["Total Value",    `${d.currency || "USD"} ${Number(d.total_value || 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}`],
+              ].map(([label, value]) => (
+                <div key={label} className="rounded-xl border border-gray-100 bg-gray-50 px-4 py-3">
+                  <p className="text-xs text-gray-500">{label}</p>
+                  <p className="mt-0.5 text-sm font-semibold text-gray-900">{value}</p>
+                </div>
+              ))}
+            </div>
+
+            {/* Customer / Vendor */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="rounded-xl border border-gray-200 p-4">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Bill To (Customer)</p>
+                <p className="text-sm font-semibold text-gray-900">{d.customer_name}</p>
+                {d.bill_to_address && <p className="text-xs text-gray-500 mt-1">{d.bill_to_address}</p>}
+              </div>
+              <div className="rounded-xl border border-gray-200 p-4">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Vendor (Us)</p>
+                <p className="text-sm font-semibold text-gray-900">QRESTIK TECHNOLOGIES LLC</p>
+                <p className="text-xs text-gray-500 mt-1">Dubai, UAE</p>
+              </div>
+            </div>
+
+            {/* Line items (read-only) */}
+            {lineItems.length > 0 && (
+              <LineItemsTable items={lineItems} onChange={() => {}} readOnly />
+            )}
+
+            {/* Totals */}
+            <div className="flex justify-end">
+              <div className="w-80 rounded-xl border border-gray-200 bg-gray-50 divide-y divide-gray-200 text-sm">
+                {[
+                  ["Subtotal",            subtotal.toLocaleString("en-US", { minimumFractionDigits: 2 })],
+                  ["VAT Amount",          vatTotal.toLocaleString("en-US", { minimumFractionDigits: 2 })],
+                ].map(([label, value]) => (
+                  <div key={label} className="flex justify-between px-4 py-2 text-gray-600">
+                    <span>{label}</span>
+                    <span className="font-medium text-gray-900">{value}</span>
+                  </div>
+                ))}
+                <div className="flex justify-between px-4 py-3 font-semibold text-gray-900 bg-white rounded-b-xl">
+                  <span>Net Amount</span>
+                  <span>{Number(d.total_value || 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Linked invoices */}
+            {d.invoices?.length > 0 && (
+              <div>
+                <p className="text-sm font-semibold text-gray-700 mb-2">Linked Invoices</p>
+                <div className="rounded-xl border border-gray-200 overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-50 text-gray-500">
+                      <tr>
+                        {["Invoice #", "Date", "Amount", "Status"].map((h) => (
+                          <th key={h} className="text-left font-medium px-4 py-2 text-xs">{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {d.invoices.map((inv) => (
+                        <tr key={inv.id} className="hover:bg-gray-50">
+                          <td className="px-4 py-2 font-medium text-gray-900">{inv.invoice_number}</td>
+                          <td className="px-4 py-2 text-gray-500">{inv.invoice_date || "—"}</td>
+                          <td className="px-4 py-2 text-gray-700">{inv.currency} {Number(inv.total_amount || 0).toLocaleString()}</td>
+                          <td className="px-4 py-2">
+                            <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700">
+                              {inv.status}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* Linked milestones */}
+            {d.milestones?.length > 0 && (
+              <div>
+                <p className="text-sm font-semibold text-gray-700 mb-2">Linked Milestones</p>
+                <div className="rounded-xl border border-gray-200 overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-50 text-gray-500">
+                      <tr>
+                        {["Milestone", "Due Date", "Status"].map((h) => (
+                          <th key={h} className="text-left font-medium px-4 py-2 text-xs">{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {d.milestones.map((m) => (
+                        <tr key={m.id} className="hover:bg-gray-50">
+                          <td className="px-4 py-2 font-medium text-gray-900">{m.title}</td>
+                          <td className="px-4 py-2 text-gray-500">{m.due_date || "—"}</td>
+                          <td className="px-4 py-2">
+                            <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700">
+                              {m.status}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {d.notes && (
+              <div className="rounded-xl border border-gray-200 p-4 bg-gray-50">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Notes</p>
+                <p className="text-sm text-gray-700">{d.notes}</p>
+              </div>
+            )}
+
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /* ─── New PO Modal ──────────────────────────────────────────────────────────── */
 function NewPOModal({ open, onClose }) {
   const qc = useQueryClient();
@@ -209,7 +410,6 @@ function NewPOModal({ open, onClose }) {
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
   const setVal = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
-  /* ── Parse uploaded doc ── */
   const handleFile = async (file) => {
     if (!file) return;
     setParsing(true); setParsed(false);
@@ -310,18 +510,14 @@ function NewPOModal({ open, onClose }) {
 
   if (!open) return null;
 
-  /* totals */
-  const subtotal    = form.line_items.reduce((s, r) => s + (parseFloat(r.total_amt) || 0), 0);
-  const vatTotal    = form.line_items.reduce((s, r) => s + (parseFloat(r.vat_amt)   || 0), 0);
-  const netAmount   = subtotal; // VAT is 0 per the template
+  const subtotal  = form.line_items.reduce((s, r) => s + (parseFloat(r.total_amt) || 0), 0);
+  const vatTotal  = form.line_items.reduce((s, r) => s + (parseFloat(r.vat_amt)   || 0), 0);
+  const netAmount = subtotal;
 
   return (
-    /* Backdrop */
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-      {/* Modal panel */}
       <div className="relative w-full max-w-5xl max-h-[92vh] overflow-y-auto bg-white rounded-2xl shadow-2xl flex flex-col">
 
-        {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 sticky top-0 bg-white z-10">
           <h2 className="text-lg font-semibold text-gray-900">New Purchase Order</h2>
           <button onClick={handleClose} className="rounded-lg p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100">
@@ -331,7 +527,7 @@ function NewPOModal({ open, onClose }) {
 
         <form onSubmit={handleSubmit} className="p-6 space-y-6">
 
-          {/* ── Upload zone ── */}
+          {/* Upload zone */}
           <label className="flex flex-col items-center justify-center border-2 border-dashed border-gray-200 rounded-xl py-7 cursor-pointer hover:border-blue-400 hover:bg-blue-50/20 transition">
             {parsing ? (
               <>
@@ -357,7 +553,7 @@ function NewPOModal({ open, onClose }) {
               onChange={(e) => handleFile(e.target.files?.[0])} disabled={parsing} />
           </label>
 
-          {/* ── PO Header info ── */}
+          {/* PO Header */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <Field label="PO Number" className="md:col-span-1">
               <input className={ic} placeholder="PO-2026-1007" value={form.po_number} onChange={set("po_number")} />
@@ -375,9 +571,8 @@ function NewPOModal({ open, onClose }) {
             </Field>
           </div>
 
-          {/* ── Customer / Vendor split ── */}
+          {/* Customer / Vendor */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Customer (Bill To) */}
             <div className="rounded-xl border border-gray-200 p-4 space-y-3">
               <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Bill To (Customer)</p>
               <Field label="Customer Name">
@@ -399,7 +594,6 @@ function NewPOModal({ open, onClose }) {
               </div>
             </div>
 
-            {/* Vendor (To) */}
             <div className="rounded-xl border border-gray-200 p-4 space-y-3">
               <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">To (Vendor / Us)</p>
               <Field label="Vendor Name">
@@ -422,13 +616,13 @@ function NewPOModal({ open, onClose }) {
             </div>
           </div>
 
-          {/* ── Line items ── */}
+          {/* Line items */}
           <LineItemsTable
             items={form.line_items}
             onChange={(items) => setForm((f) => ({ ...f, line_items: items }))}
           />
 
-          {/* ── Totals summary ── */}
+          {/* Totals */}
           <div className="flex justify-end">
             <div className="w-80 rounded-xl border border-gray-200 bg-gray-50 divide-y divide-gray-200 text-sm">
               {[
@@ -450,13 +644,11 @@ function NewPOModal({ open, onClose }) {
             </div>
           </div>
 
-          {/* Amount in words */}
           <Field label="Amount in Words">
             <input className={ic} placeholder="USD Sixty Four Thousand Five Hundred Only"
               value={form.amount_in_words} onChange={set("amount_in_words")} />
           </Field>
 
-          {/* Delivery + Notes */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Field label="Delivery Instructions">
               <input className={ic} placeholder="Please advice us when the shipment is ready for collection"
@@ -467,7 +659,6 @@ function NewPOModal({ open, onClose }) {
             </Field>
           </div>
 
-          {/* ── Actions ── */}
           <div className="flex justify-end gap-2 border-t border-gray-100 pt-4">
             <button
               type="button"
@@ -492,21 +683,28 @@ function NewPOModal({ open, onClose }) {
 
 /* ─── Main Page ─────────────────────────────────────────────────────────────── */
 export default function PurchaseOrdersPage() {
-  const [tab, setTab]       = useState("all");
+  const [tab, setTab]         = useState("all");
   const [showNew, setShowNew] = useState(false);
+  const [selectedPO, setSelectedPO] = useState(null);
 
   const { data: pos = [], isLoading } = useQuery({
     queryKey: ["purchase-orders", tab],
     queryFn: () => listPOs(tab === "all" ? undefined : { status: tab }),
   });
 
-  const totalValue  = pos.reduce((s, p) => s + Number(p.total_value || 0), 0);
-  const activeCount = pos.filter((p) => p.status === "active").length;
+  const totalValue   = pos.reduce((s, p) => s + Number(p.total_value || 0), 0);
+  const activeCount  = pos.filter((p) => p.status === "active").length;
+  const expiringSoon = pos.filter((p) => {
+    if (!p.expiry_date) return false;
+    const daysLeft = (new Date(p.expiry_date) - new Date()) / (1000 * 60 * 60 * 24);
+    return daysLeft >= 0 && daysLeft <= 30;
+  }).length;
+  const notInvoiced  = pos.filter((p) => ["active"].includes(p.status)).length;
 
   return (
     <div className="p-6 space-y-6">
 
-      {/* ── Page header ── */}
+      {/* Page header */}
       <div className="flex items-start justify-between">
         <PageHeader
           eyebrow="QRESTIK TECHNOLOGIES"
@@ -523,24 +721,30 @@ export default function PurchaseOrdersPage() {
         </div>
       </div>
 
-      {/* ── Stats strip ── */}
-      {pos.length > 0 && (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          {[
-            { label: "Total POs",        value: pos.length },
-            { label: "Active",           value: activeCount },
-            { label: "Total Value",      value: `${pos[0]?.currency || "USD"} ${totalValue.toLocaleString()}` },
-            { label: "Awaiting Invoice", value: activeCount },
-          ].map(({ label, value }) => (
-            <div key={label} className="rounded-xl border border-gray-200 bg-white px-4 py-3">
-              <p className="text-xs font-medium text-gray-500">{label}</p>
-              <p className="mt-0.5 text-xl font-bold text-gray-900">{value}</p>
-            </div>
-          ))}
+      {/* Stats strip */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        {[
+          { label: "Total POs",          value: pos.length },
+          { label: "Active",             value: activeCount },
+          { label: "Total PO Value",     value: pos.length ? `${pos[0]?.currency || "USD"} ${totalValue.toLocaleString()}` : "—" },
+          { label: "Expiring This Month",value: expiringSoon },
+        ].map(({ label, value }) => (
+          <div key={label} className="rounded-xl border border-gray-200 bg-white px-4 py-3">
+            <p className="text-xs font-medium text-gray-500">{label}</p>
+            <p className="mt-0.5 text-xl font-bold text-gray-900">{value}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Not-invoiced alert banner */}
+      {notInvoiced > 0 && (
+        <div className="flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          <span className="font-semibold">{notInvoiced} active PO{notInvoiced > 1 ? "s" : ""} not yet invoiced.</span>
+          <span className="text-amber-600">Open a PO and click "Raise Invoice from PO" to proceed.</span>
         </div>
       )}
 
-      {/* ── Status tabs ── */}
+      {/* Status tabs */}
       <div className="flex flex-wrap gap-2">
         {STATUS_TABS.map((t) => (
           <button
@@ -555,7 +759,7 @@ export default function PurchaseOrdersPage() {
         ))}
       </div>
 
-      {/* ── Table ── */}
+      {/* Table */}
       <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
         {isLoading ? (
           <div className="p-10 flex justify-center">
@@ -579,7 +783,11 @@ export default function PurchaseOrdersPage() {
             </thead>
             <tbody className="divide-y divide-gray-100">
               {pos.map((po) => (
-                <tr key={po.id} className="hover:bg-gray-50 cursor-pointer">
+                <tr
+                  key={po.id}
+                  className="hover:bg-gray-50 cursor-pointer"
+                  onClick={() => setSelectedPO(po)}
+                >
                   <td className="px-4 py-3 font-semibold text-gray-900">{po.po_number}</td>
                   <td className="px-4 py-3 text-gray-700">{po.customer_name}</td>
                   <td className="px-4 py-3 text-gray-700">
@@ -594,8 +802,23 @@ export default function PurchaseOrdersPage() {
                       {po.status?.replace(/_/g, " ")}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-right">
-                    <button className="text-blue-700 text-xs hover:underline">View →</button>
+                  <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
+                    <div className="flex items-center justify-end gap-2">
+                      {["active", "partially_invoiced"].includes(po.status) && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setSelectedPO(po); }}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-lg bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100"
+                        >
+                          <Receipt className="h-3 w-3" /> Invoice
+                        </button>
+                      )}
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setSelectedPO(po); }}
+                        className="text-gray-400 hover:text-blue-700 text-xs"
+                      >
+                        <Eye className="h-4 w-4" />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -604,8 +827,13 @@ export default function PurchaseOrdersPage() {
         )}
       </div>
 
-      {/* ── Modal ── */}
+      {/* Modals */}
       <NewPOModal open={showNew} onClose={() => setShowNew(false)} />
+      <PODetailModal
+        po={selectedPO}
+        open={!!selectedPO}
+        onClose={() => setSelectedPO(null)}
+      />
     </div>
   );
 }
