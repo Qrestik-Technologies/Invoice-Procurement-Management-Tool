@@ -15,7 +15,6 @@ import DocumentsPage from './pages/DocumentsPage';
 import CashFlowPage from './pages/CashFlowPage';
 import SettingsPage from './pages/SettingsPage';
 import PurchaseOrdersPage from './pages/PurchaseOrdersPage';
-import PurchaseOrdersPage from './pages/PurchaseOrdersPage';
 
 export default function App() {
   return (

@@ -68,7 +68,7 @@ function MetricCard({ label, value, sub, icon: Icon, color, bg, trend }) {
 
 // ── Bar Chart (pure SVG) ──────────────────────────────────────────────────────
 
-function BarChart({ data }) {
+function BarChart({ data, currency = "AED" }) {
   if (!data || data.length === 0) return null;
 
   const W = 620, H = 200, PAD = { top: 16, right: 16, bottom: 40, left: 56 };
@@ -92,7 +92,7 @@ function BarChart({ data }) {
         <g key={y}>
           <line x1={PAD.left} x2={W - PAD.right} y1={y} y2={y} stroke="#F3F4F6" strokeWidth="1" />
           <text x={PAD.left - 6} y={y + 4} textAnchor="end" fontSize="10" fill="#9CA3AF">
-            {fmt(val, summary.currency)}
+            {fmt(val, currency)}
           </text>
         </g>
       ))}
@@ -143,7 +143,7 @@ function BarChart({ data }) {
 
 // ── Receivables Table ─────────────────────────────────────────────────────────
 
-function ReceivablesTable({ invoices }) {
+function ReceivablesTable({ invoices, currency = "AED" }) {
   if (!invoices || invoices.length === 0) {
     return (
       <p className="text-xs text-[#9CA3AF] py-6 text-center">No open receivables for this period.</p>
@@ -164,7 +164,7 @@ function ReceivablesTable({ invoices }) {
         {invoices.map((inv) => (
           <tr key={inv.id} className="border-b border-border last:border-0">
             <td className="py-2.5 pr-4 font-medium text-[#111827]">{inv.customer || '—'}</td>
-            <td className="py-2.5 pr-4 text-[#374151]">{fmtFull(inv.amount, summary.currency)}</td>
+            <td className="py-2.5 pr-4 text-[#374151]">{fmtFull(inv.amount, currency)}</td>
             <td className="py-2.5 pr-4 text-[#6B7280]">
               <span className="flex items-center gap-1">
                 <Calendar className="h-3 w-3 shrink-0" />
@@ -195,12 +195,9 @@ export default function CashFlowPage() {
   useEffect(() => {
     if (!organizationId) return;
     setLoading(true);
-    Promise.all([
-      apiClient.get('/cash-flow/summary').then(r => r.data.data).catch(() => null),
-      apiClient.get('/cash-flow/monthly?months=6').then(r => r.data.data).catch(() => []),
-    ]).then(([s, m]) => {
+    apiClient.get("/cash-flow/summary").then(r => r.data.data).catch(() => null).then(s => {
       setSummary(s);
-      setMonthly(m || []);
+      setMonthly([]);
     }).finally(() => setLoading(false));
   }, [organizationId]);
 
@@ -296,7 +293,7 @@ export default function CashFlowPage() {
                 <BarChart2 className="h-4 w-4 text-[#6B7280]" />
                 <p className="text-sm font-medium text-[#374151]">Invoiced vs Received (6 months)</p>
               </div>
-              <BarChart data={monthly} />
+              <BarChart data={monthly} currency={summary?.currency ?? "AED"} />
             </div>
 
             {/* Receivables table */}
@@ -305,7 +302,7 @@ export default function CashFlowPage() {
                 <DollarSign className="h-4 w-4 text-[#6B7280]" />
                 <p className="text-sm font-medium text-[#374151]">Open Receivables</p>
               </div>
-              <ReceivablesTable invoices={summary.invoices} />
+              <ReceivablesTable invoices={summary.invoices} currency={summary?.currency ?? "AED"} />
             </div>
           </div>
 

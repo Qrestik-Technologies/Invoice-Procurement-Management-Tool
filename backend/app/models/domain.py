@@ -58,6 +58,7 @@ class Invoice(Base):
     file_path: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)   # OneDrive path
     onedrive_item_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     received_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    po_id: Mapped[Optional[int]] = mapped_column(ForeignKey("purchase_orders.id"), nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
@@ -70,6 +71,7 @@ class Invoice(Base):
     reminders = relationship("Reminder", back_populates="invoice", cascade="all, delete-orphan")
     documents = relationship("Document", back_populates="linked_invoice")
     invoice_reminders = relationship("InvoiceReminder", back_populates="invoice")
+    purchase_order = relationship("PurchaseOrder", back_populates="invoices")
 
 
 class Milestone(Base):
@@ -134,8 +136,6 @@ class AuditLog(Base):
     entity_id: Mapped[int] = mapped_column(Integer, nullable=False)
     action: Mapped[AuditAction] = mapped_column(Enum(AuditAction), nullable=False)
     detail: Mapped[Optional[str]] = mapped_column(Text, nullable=True)       # JSON diff or notes
-    po_id: Mapped[Optional[int]] = mapped_column(ForeignKey("purchase_orders.id"), nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     changer = relationship("User", back_populates="audit_logs", foreign_keys=[changed_by])
-    purchase_order = relationship("PurchaseOrder", back_populates="invoices")

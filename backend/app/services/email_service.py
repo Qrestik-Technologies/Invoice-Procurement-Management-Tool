@@ -67,3 +67,8 @@ def send_code_email(to_email: str, code: str, purpose: str) -> bool:
     except Exception as exc:  # noqa: BLE001
         logger.exception("SendGrid error sending %s code to %s: %s", purpose, to_email, exc)
         return False
+
+
+def send_internal_alert(subject: str, message: str) -> None:
+    """Internal alert — logs to console; swap for real email if needed."""
+    print(f"[INTERNAL ALERT] {subject}: {message}")

@@ -36,8 +36,8 @@ async def cashflow_summary(
 
         expected_q = await db.execute(
             select(func.coalesce(func.sum(Invoice.total), 0)).where(
-                Invoice.invoice_date >= month_start,
-                Invoice.invoice_date < month_end,
+                Invoice.issue_date >= month_start,
+                Invoice.issue_date < month_end,
             )
         )
         received_q = await db.execute(
@@ -58,13 +58,13 @@ async def cashflow_summary(
     inv_result = await db.execute(
         select(Invoice)
         .options(selectinload(Invoice.customer))
-        .where(Invoice.status.in_([InvoiceStatus.pending, InvoiceStatus.dispatched, InvoiceStatus.overdue, InvoiceStatus.received]))
-        .order_by(Invoice.invoice_date.desc())
+        .where(Invoice.status.in_([InvoiceStatus.draft, InvoiceStatus.pending, InvoiceStatus.dispatched, InvoiceStatus.overdue, InvoiceStatus.received]))
+        .order_by(Invoice.issue_date.desc())
         .limit(20)
     )
     invoice_rows = []
     for inv in inv_result.scalars().all():
-        expected_date = inv.invoice_date + timedelta(days=30)
+        expected_date = inv.issue_date + timedelta(days=30)
         invoice_rows.append(
             {
                 "invoice_id": inv.id,

@@ -128,14 +128,14 @@ async def cash_flow_summary(
     company_id: Annotated[int | None, Depends(get_company_scope)] = None,
     start: Optional[date] = Query(None, description="Period start (YYYY-MM-DD)"),
     end: Optional[date] = Query(None, description="Period end (YYYY-MM-DD)"),
-    currency: str = Query("USD"),
+    currency: str = Query("AED"),
 ):
     today = date.today()
     period_start = start or date(today.year, today.month, 1)
     period_end = end or today
 
-    q = select(Invoice).options(selectinload(Invoice.customer)).where(
-        Invoice.currency == currency,
+    q = select(Invoice).options().where(
+        
         Invoice.issue_date >= period_start,
         Invoice.issue_date <= period_end,
     )
@@ -143,6 +143,8 @@ async def cash_flow_summary(
         q = q.where(Invoice.company_id == company_id)
     result = await db.execute(q)
     invoices = result.scalars().all()
+    # Auto-detect currency from invoices, fall back to query param
+    detected_currency = invoices[0].currency if invoices else currency
 
     total_invoiced = sum((i.amount for i in invoices), Decimal("0"))
     received = [i for i in invoices if i.status in (InvoiceStatus.received, InvoiceStatus.paid)]
@@ -152,7 +154,7 @@ async def cash_flow_summary(
     invoice_rows = [
         {
             "id": i.id,
-            "customer": i.customer.name if i.customer else "—",
+            "customer": i.customer_name or "—",
             "amount": float(i.amount),
             "due_date": str(i.due_date),
             "status": i.status.value if hasattr(i.status, "value") else i.status,
@@ -170,7 +172,7 @@ async def cash_flow_summary(
         overdue_count=sum(1 for i in invoices if i.status == InvoiceStatus.overdue),
         paid_count=sum(1 for i in invoices if i.status == InvoiceStatus.paid),
         draft_count=sum(1 for i in invoices if i.status == InvoiceStatus.draft),
-        currency=currency,
+        currency=detected_currency,
         invoices=invoice_rows,
     ))
 
