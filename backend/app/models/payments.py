@@ -4,7 +4,7 @@ from decimal import Decimal
 from sqlalchemy import Date, DateTime, ForeignKey, Numeric, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.core.database import Base
+from app.core.base import Base
 
 
 class Payment(Base):

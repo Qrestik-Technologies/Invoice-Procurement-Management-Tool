@@ -5,7 +5,7 @@ from sqlalchemy import Date, DateTime, Enum, ForeignKey, Numeric, String, Text, 
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.core.database import Base
+from app.core.base import Base
 from app.models.enums import InvoiceStatus
 
 

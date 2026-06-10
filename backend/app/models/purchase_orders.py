@@ -5,7 +5,7 @@ from typing import Optional
 from sqlalchemy import Date, DateTime, Enum, ForeignKey, JSON, Numeric, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.core.database import Base
+from app.core.base import Base
 from app.models.enums import POStatus
 
 
