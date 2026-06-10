@@ -15,6 +15,7 @@ import DocumentsPage from './pages/DocumentsPage';
 import CashFlowPage from './pages/CashFlowPage';
 import SettingsPage from './pages/SettingsPage';
 import PurchaseOrdersPage from './pages/PurchaseOrdersPage';
+import PurchaseOrdersPage from './pages/PurchaseOrdersPage';
 
 export default function App() {
   return (
@@ -32,6 +33,7 @@ export default function App() {
           <Route index element={<DashboardPage />} />
           <Route path="invoices" element={<InvoicesPage />} />
           <Route path="milestones" element={<MilestonesPage />} />
+          <Route path="purchase-orders" element={<PurchaseOrdersPage />} />
           <Route path="purchase-orders" element={<PurchaseOrdersPage />} />
           <Route path="customers" element={<CustomersPage />} />
           <Route path="reminders" element={<RemindersPage />} />
