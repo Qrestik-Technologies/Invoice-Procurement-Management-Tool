@@ -79,12 +79,11 @@ async def list_reminders(
     company_id: Annotated[int | None, Depends(get_company_scope)] = None,
     invoice_id: Optional[int] = Query(None),
 ):
-    q = select(InvoiceReminder)
-    if company_id is not None:
-        q = q.join(Invoice).where(Invoice.company_id == company_id)
+    from app.models.domain import Reminder
+    q = select(Reminder)
     if invoice_id:
-        q = q.where(InvoiceReminder.invoice_id == invoice_id)
-    result = await db.execute(q.order_by(InvoiceReminder.scheduled_at))
+        q = q.where(Reminder.invoice_id == invoice_id)
+    result = await db.execute(q.order_by(Reminder.scheduled_at))
     return APIResponse(data=[ReminderRead.model_validate(r) for r in result.scalars().all()])
 
 

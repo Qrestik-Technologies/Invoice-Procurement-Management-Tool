@@ -300,7 +300,9 @@ class ReminderCreate(BaseModel):
 class ReminderRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: int
-    invoice_id: int
+    invoice_id: int | None = None
+    po_id: int | None = None
+    reminder_type: str | None = None
     scheduled_at: datetime
     sent_at: datetime | None = None
     message: str | None = None
