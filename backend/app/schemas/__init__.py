@@ -174,6 +174,8 @@ class CustomerBase(BaseModel):
     email: EmailStr | None = None
     phone: str | None = None
     address: str | None = None
+    ship_to_address: str | None = None
+    payment_terms: str | None = None
     tax_id: str | None = None
     notes: str | None = None
 
@@ -187,6 +189,8 @@ class CustomerUpdate(BaseModel):
     email: EmailStr | None = None
     phone: str | None = None
     address: str | None = None
+    ship_to_address: str | None = None
+    payment_terms: str | None = None
     tax_id: str | None = None
     notes: str | None = None
 

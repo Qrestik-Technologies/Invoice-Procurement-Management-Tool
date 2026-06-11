@@ -118,7 +118,7 @@ async def create_invoice(
     milestone = Milestone(
         invoice_id=inv.id,
         title=f"Payment due — {inv.invoice_number}",
-        due_date=due,
+        end_date=due,
         amount=inv.amount,
         status=MilestoneStatus.pending,
     )
