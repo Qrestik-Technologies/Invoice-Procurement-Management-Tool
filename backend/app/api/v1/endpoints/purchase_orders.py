@@ -268,28 +268,6 @@ async def create_invoice_from_po(
     db.add(invoice)
     await db.flush()
 
-    # Auto-create milestone for this invoice (same as invoice flow)
-    due = invoice.due_date
-    from app.models.inovice_remainder import InvoiceReminder
-    milestone = Milestone(
-        invoice_id=invoice.id,
-        title=f"Payment due — {invoice.invoice_number}",
-        end_date=due,
-        amount=invoice.amount,
-        status=MilestoneStatus.pending,
-        po_id=po.id,
-        source=MilestoneSource.po_generated,
-    )
-    db.add(milestone)
-
-    # Auto-create reminder 3 days before due (same as invoice flow)
-    reminder_date = due - timedelta(days=3)
-    reminder = InvoiceReminder(
-        invoice_id=invoice.id,
-        scheduled_at=datetime.combine(reminder_date, datetime.min.time()).replace(tzinfo=timezone.utc),
-    )
-    db.add(reminder)
-
     # Update PO status
     existing_invoices = po.invoices or []
     po.status = POStatus.partially_invoiced if len(existing_invoices) > 0 else POStatus.partially_invoiced
