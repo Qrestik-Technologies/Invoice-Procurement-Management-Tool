@@ -119,12 +119,15 @@ class Reminder(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     invoice_id: Mapped[Optional[int]] = mapped_column(ForeignKey("invoices.id"), nullable=True)
+    po_id: Mapped[Optional[int]] = mapped_column(ForeignKey("purchase_orders.id"), nullable=True, index=True)
     scheduled_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     sent_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    reminder_type: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     invoice = relationship("Invoice", back_populates="reminders")
+    purchase_order = relationship("PurchaseOrder", foreign_keys=[po_id])
 
 
 class AuditLog(Base):

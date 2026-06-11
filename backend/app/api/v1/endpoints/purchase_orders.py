@@ -154,11 +154,12 @@ async def update_purchase_order(
     company_id: int | None = Depends(get_company_scope),
 ):
     po = await _get_po_or_404(db, po_id, company_id)
+    old_status = po.status  # capture BEFORE applying updates
     for field, value in body.model_dump(exclude_none=True).items():
         setattr(po, field, value)
 
     # ── Confirm PO → set active, auto-create milestone, send alert ────────────
-    if body.status == POStatus.active and po.status == POStatus.draft:
+    if body.status == POStatus.active and old_status == POStatus.draft:
         po.confirmed_by = current_user.id
         milestone_date = getattr(po, "delivery_date", None) or po.expiry_date
         if milestone_date:
@@ -173,6 +174,21 @@ async def update_purchase_order(
                 source=MilestoneSource.po_generated,
             )
             db.add(milestone)
+        # Auto-create reminder 7 days before milestone end date
+        if milestone_date:
+            from app.models.domain import Reminder
+            reminder_dt = datetime.combine(
+                milestone_date - timedelta(days=7), datetime.min.time()
+            ).replace(tzinfo=timezone.utc)
+            reminder = Reminder(
+                po_id=po.id,
+                invoice_id=None,
+                scheduled_at=reminder_dt,
+                reminder_type="po_milestone",
+                message=f"PO {po.po_number} milestone due in 7 days — {po.customer_name}",
+            )
+            db.add(reminder)
+
         # Send internal alert to Vivek, Akhilan, Deepak
         try:
             from app.services.email_service import send_internal_alert
