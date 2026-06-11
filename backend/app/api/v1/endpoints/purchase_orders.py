@@ -296,6 +296,22 @@ async def create_invoice_from_po(
     await write_audit(db, current_user.id, "purchase_order", po.id, AuditAction.updated)
     await db.commit()
     await db.refresh(invoice)
+
+    # Auto-upload invoice PDF to OneDrive (non-fatal)
+    try:
+        from app.services.pdf_service import export_invoice_to_pdf
+        from app.services.onedrive_service import upload_file_to_onedrive
+        pdf_bytes = await run_in_threadpool(export_invoice_to_pdf, invoice)
+        od_filename = f"invoice_{invoice.invoice_number}.pdf"
+        metadata = await run_in_threadpool(upload_file_to_onedrive, pdf_bytes, od_filename)
+        if metadata and metadata.get("id"):
+            invoice.onedrive_item_id = metadata.get("id")
+            await db.commit()
+            await db.refresh(invoice)
+        logger.info("Invoice %s uploaded to OneDrive", invoice.invoice_number)
+    except Exception as e:
+        logger.warning("OneDrive upload failed for invoice %s (non-fatal): %s", invoice.invoice_number, e)
+
     return APIResponse(data=InvoiceRead.model_validate(invoice), message="Invoice created from PO")
 
 
