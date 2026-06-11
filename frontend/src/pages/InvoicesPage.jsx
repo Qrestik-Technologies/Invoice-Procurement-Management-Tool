@@ -418,12 +418,6 @@ export default function InvoicesPage() {
             <Button variant="secondary" size="sm" onClick={handleExport}>
               <Download className="h-4 w-4" /> Export
             </Button>
-            {canEdit && (
-              <>
-<Button size="sm" onClick={() => { setForm(EMPTY_FORM); setShowModal(true); }}>
-                  <Plus className="h-4 w-4" /> New Invoice
-                </Button>
-              </>
             )}
           </div>
         )}
