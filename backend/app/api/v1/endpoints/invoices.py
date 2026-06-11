@@ -138,25 +138,30 @@ async def create_invoice(
     await db.commit()
     await db.refresh(inv)
 
-    # ── Auto-upload invoice summary to OneDrive (once on create) ────────────
+    # ── Upload actual invoice file to OneDrive ──────────────────────────────
     onedrive_url = None
-    try:
-        pdf_bytes = await run_in_threadpool(export_invoice_to_pdf, inv)
-        od_filename = f"invoice_{inv.invoice_number}.pdf"
-        metadata = await run_in_threadpool(upload_file_to_onedrive, pdf_bytes, od_filename)
-        if metadata:
-            onedrive_url = metadata.get("webUrl")
-    except Exception as exc:
-        logger.warning("OneDrive upload error (non-fatal): %s", exc)
-    # ────────────────────────────────────────────────────────────────────────
-
-    # ── Auto-log Document record ─────────────────────────────────────────────
+    original_filename = f"invoice_{inv.invoice_number}.pdf"
     try:
         from app.models.documents import Document
         from app.models.enums import DocumentType, SyncStatus
+        from pathlib import Path as _Path
+
+        # Use uploaded file if available, otherwise generate PDF
+        uploaded_path = _Path(body.file_path) if getattr(body, "file_path", None) else None
+        if uploaded_path and uploaded_path.exists():
+            file_bytes = uploaded_path.read_bytes()
+            original_filename = f"invoice_{inv.invoice_number}{uploaded_path.suffix}"
+        else:
+            file_bytes = await run_in_threadpool(export_invoice_to_pdf, inv)
+            original_filename = f"invoice_{inv.invoice_number}.pdf"
+
+        metadata = await run_in_threadpool(upload_file_to_onedrive, file_bytes, original_filename)
+        if metadata:
+            onedrive_url = metadata.get("webUrl")
+
         doc = Document(
-            filename=f"invoice_{inv.invoice_number}.pdf",
-            file_path=onedrive_url or f"invoice_{inv.invoice_number}.pdf",
+            filename=original_filename,
+            file_path=onedrive_url or original_filename,
             onedrive_url=onedrive_url,
             linked_invoice_id=inv.id,
             uploaded_by=current_user.id,
@@ -166,8 +171,11 @@ async def create_invoice(
         )
         db.add(doc)
         await db.commit()
+        # Clean up temp file
+        if uploaded_path and uploaded_path.exists():
+            uploaded_path.unlink(missing_ok=True)
     except Exception as exc:
-        logger.warning("Document auto-log failed (non-fatal): %s", exc)
+        logger.warning("OneDrive upload/document log failed (non-fatal): %s", exc)
     # ────────────────────────────────────────────────────────────────────────
 
     return APIResponse(data=InvoiceRead.model_validate(inv), message="Invoice created")
@@ -381,17 +389,14 @@ async def parse_and_save_invoice(
     safe_name = f"{uuid.uuid4().hex}{ext}"
     dest = UPLOAD_DIR / safe_name
     dest.write_bytes(content)
-    content_bytes = content  # save for OneDrive upload
     try:
         parse_result = parse_invoice(str(dest))
-    finally:
+    except Exception as exc:
         dest.unlink(missing_ok=True)
+        raise HTTPException(status_code=422, detail=f"Parse error: {exc}")
 
-    # Return parse result only — saving happens when user clicks Create Invoice
-    invoice_number = parse_result.invoice_number or ""
-
-
-    # OneDrive upload happens only on actual invoice creation, not on parse
+    # Keep file on disk — will be uploaded to OneDrive on invoice create
+    parse_result.file_path = str(dest)
 
     return APIResponse(
         data=ParseUploadResponse(document_id=0, parse_result=parse_result),

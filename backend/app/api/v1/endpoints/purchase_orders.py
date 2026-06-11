@@ -98,6 +98,34 @@ async def create_purchase_order(
     await write_audit(db, current_user.id, "purchase_order", po.id, AuditAction.created)
     await db.commit()
     await db.refresh(po)
+
+    # ── Upload actual PO file to OneDrive ────────────────────────────────────
+    try:
+        from app.services.onedrive_service import upload_file_to_onedrive
+        from app.models.documents import Document
+        from app.models.enums import DocumentType, SyncStatus
+        saved_path = Path(file_path)
+        if saved_path.exists():
+            file_bytes = saved_path.read_bytes()
+            od_filename = f"PO_{po.po_number}{saved_path.suffix}"
+            metadata = await run_in_threadpool(upload_file_to_onedrive, file_bytes, od_filename)
+            onedrive_url = metadata.get("webUrl") if metadata else None
+            doc = Document(
+                filename=od_filename,
+                file_path=onedrive_url or file_path,
+                onedrive_url=onedrive_url,
+                linked_po_id=po.id,
+                uploaded_by=current_user.id,
+                document_type=DocumentType.po,
+                sync_status=SyncStatus.synced if onedrive_url else SyncStatus.pending,
+                customer_name=po.customer_name,
+            )
+            db.add(doc)
+            await db.commit()
+            logger.info("PO %s uploaded to OneDrive", po.po_number)
+    except Exception as e:
+        logger.warning("OneDrive upload failed for PO %s (non-fatal): %s", po.po_number, e)
+    # ────────────────────────────────────────────────────────────────────────
     return APIResponse(data=PORead.model_validate(po))
 
 
