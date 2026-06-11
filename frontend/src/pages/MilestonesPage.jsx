@@ -88,11 +88,7 @@ export default function MilestonesPage() {
         title={meta.title}
         organizationName={meta.organizationName}
         description={meta.description}
-        action={canEdit ? (
-          <Button size="sm" onClick={() => setShowModal(true)}>
-            <Plus className="h-4 w-4" /> New Milestone
-          </Button>
-        ) : null}
+        action={null}
       />
 
       <div className="rounded-xl border border-border bg-white shadow-sm overflow-hidden">
