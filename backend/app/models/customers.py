@@ -19,6 +19,7 @@ class Customer(Base):
         Enum(TemplateType), nullable=False, default=TemplateType.standard
     )
     ship_to_address: Mapped[str | None] = mapped_column(Text)
+    payment_terms: Mapped[str | None] = mapped_column(String(100))  # e.g. "Net 30", "Net 45"
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     milestones = relationship("Milestone", back_populates="customer")
