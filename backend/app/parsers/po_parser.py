@@ -91,15 +91,15 @@ def _parse_line_items_from_table(tables: list) -> list:
             if not first or not first.isdigit():
                 continue
 
-            desc     = _clean_cell(row[col.get("desc", 1)])     if col.get("desc")    is not None else ""
-            qty      = _parse_amount(row[col.get("qty", 2)])    if col.get("qty")     is not None else 1.0
-            rate     = _parse_amount(row[col.get("rate", 3)])   if col.get("rate")    is not None else 0.0
+            desc     = _clean_cell(row[col.get("desc", 1)])      if col.get("desc")     is not None else ""
+            qty      = _parse_amount(row[col.get("qty", 2)])     if col.get("qty")      is not None else 1.0
+            rate     = _parse_amount(row[col.get("rate", 3)])    if col.get("rate")     is not None else 0.0
             discount = _parse_amount(row[col.get("discount", 5)]) if col.get("discount") is not None else 0.0
-            taxable  = _parse_amount(row[col.get("taxable", 6)]) if col.get("taxable") is not None else 0.0
-            vat_pct  = _parse_amount(row[col.get("vat_pct", 7)]) if col.get("vat_pct") is not None else 0.0
-            vat_amt  = _parse_amount(row[col.get("vat_amt", 8)]) if col.get("vat_amt") is not None else 0.0
-            total    = _parse_amount(row[col.get("total", 9)])   if col.get("total")   is not None else 0.0
-            amount   = _parse_amount(row[col.get("amount", 4)])  if col.get("amount")  is not None else 0.0
+            taxable  = _parse_amount(row[col.get("taxable", 6)]) if col.get("taxable")  is not None else 0.0
+            vat_pct  = _parse_amount(row[col.get("vat_pct", 7)]) if col.get("vat_pct")  is not None else 0.0
+            vat_amt  = _parse_amount(row[col.get("vat_amt", 8)]) if col.get("vat_amt")  is not None else 0.0
+            total    = _parse_amount(row[col.get("total", 9)])   if col.get("total")    is not None else 0.0
+            amount   = _parse_amount(row[col.get("amount", 4)])  if col.get("amount")   is not None else 0.0
 
             if amount == 0 and qty and rate:
                 amount = qty * rate
@@ -154,18 +154,31 @@ def parse_po(file_path: str) -> dict:
 
     payment_terms = _search(r"PAYMENT\s*[:\-]\s*([^\n]{1,40})", text, group=1)
 
-    # Currency: read from doc but default AED
     currency = _search(r"CURRENCY\s*[:\-]?\s*([A-Z]{3})", text, group=1) or "AED"
 
-    # Customer name: first non-empty line, strip Arabic garbage
+    # Customer: first non-empty line, strip Arabic garbage
     lines = [l.strip() for l in text.splitlines() if l.strip()]
     customer_name = _clean_text(lines[0]) if lines else None
 
-    # Bill To address: P.O. Box line, strip Arabic garbage
+    # Organization = same as customer name
+    customer_organization = customer_name
+
+    # Phone number
+    customer_phone = _search(r"Phone\s*[:\-]?\s*(\+?[\d\s\-]{7,20})", text, group=1)
+
+    # Bill To address: P.O. Box + city lines, strip Arabic garbage
     bill_to_raw = _search(r"(P\.?O\.?\s*Box[^\n]*)", text, group=1)
-    if not bill_to_raw:
-        bill_to_raw = _search(r"(?:Bill\s*To|Ship\s*To)[^\n]*\n([^\n]+)", text, group=1)
-    bill_to = _clean_text(bill_to_raw) if bill_to_raw else None
+    bill_to_city = _search(r"(?:P\.?O\.?\s*Box[^\n]*\n)([^\n]+)", text, group=1)
+    if bill_to_raw and bill_to_city:
+        bill_to = _clean_text(bill_to_raw) + ", " + _clean_text(bill_to_city)
+    elif bill_to_raw:
+        bill_to = _clean_text(bill_to_raw)
+    else:
+        bill_to = _search(r"(?:Bill\s*To|Ship\s*To)[^\n]*\n([^\n]+)", text, group=1)
+        bill_to = _clean_text(bill_to) if bill_to else None
+
+    # TRN
+    customer_trn = _search(r"TRN\s*(?:No|Number)?\s*[:\-]?\s*([\d]{10,20})", text, group=1)
 
     signatory = _search(
         r"(?:For\s+)([A-Z][^\n]{5,80}(?:Company|LLC|Ltd|Inc|Corp)[^\n]*)",
@@ -183,16 +196,19 @@ def parse_po(file_path: str) -> dict:
         total_value = sum(_parse_amount(li["total_amt"]) for li in line_items)
 
     return {
-        "po_number":            po_number,
-        "po_date":              po_date,
-        "expiry_date":          expiry_date,
-        "delivery_date":        delivery_date,
-        "payment_terms":        payment_terms,
-        "currency":             currency,
-        "customer_name":        customer_name,
-        "bill_to_address":      bill_to,
-        "ship_to_address":      bill_to,
-        "authorised_signatory": signatory,
-        "total_value":          total_value,
-        "line_items":           line_items,
+        "po_number":             po_number,
+        "po_date":               po_date,
+        "expiry_date":           expiry_date,
+        "delivery_date":         delivery_date,
+        "payment_terms":         payment_terms,
+        "currency":              currency,
+        "customer_name":         customer_name,
+        "customer_organization": customer_organization,
+        "customer_phone":        customer_phone,
+        "customer_trn":          customer_trn,
+        "bill_to_address":       bill_to,
+        "ship_to_address":       bill_to,
+        "authorised_signatory":  signatory,
+        "total_value":           total_value,
+        "line_items":            line_items,
     }
