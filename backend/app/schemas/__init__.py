@@ -409,12 +409,15 @@ class POCreate(BaseModel):
     customer_name: str
     po_date: date | None = None
     expiry_date: date | None = None
+    delivery_date: date | None = None
     total_value: Decimal = Decimal("0")
     billing_terms: str | None = None
     payment_terms: str | None = None
+    currency: str = "AED"
     ship_to_address: str | None = None
     bill_to_address: str | None = None
     authorised_signatory: str | None = None
+    notes: str | None = None
     line_items: list[LineItemSchema] = []
 
 class POUpdate(BaseModel):
@@ -422,12 +425,15 @@ class POUpdate(BaseModel):
     customer_name: str | None = None
     po_date: date | None = None
     expiry_date: date | None = None
+    delivery_date: date | None = None
     total_value: Decimal | None = None
     billing_terms: str | None = None
     payment_terms: str | None = None
+    currency: str | None = None
     ship_to_address: str | None = None
     bill_to_address: str | None = None
     authorised_signatory: str | None = None
+    notes: str | None = None
     line_items: list[LineItemSchema] | None = None
     status: POStatus | None = None
 
@@ -445,6 +451,9 @@ class PORead(BaseModel):
     ship_to_address: str | None = None
     bill_to_address: str | None = None
     authorised_signatory: str | None = None
+    delivery_date: date | None = None
+    currency: str | None = None
+    notes: str | None = None
     line_items: list | None = None
     status: POStatus
     document_id: int | None = None
@@ -456,3 +465,9 @@ class PORead(BaseModel):
 class POParseUploadResponse(BaseModel):
     parsed: POParseSchema
     file_path: str
+
+
+class PODetail(PORead):
+    """Extended PO read schema that includes linked invoices and milestones."""
+    invoices: list[InvoiceRead] = []
+    milestones: list[MilestoneRead] = []

@@ -1,7 +1,7 @@
 """Purchase Order CRUD, parse, confirm, create-invoice, close."""
 import logging
 import uuid
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Annotated, Optional
 
@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, 
 from fastapi.concurrency import run_in_threadpool
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.core.company_scope import get_company_scope
 from app.core.config import settings
@@ -17,13 +18,12 @@ from app.core.rbac import require_any_role, require_entry_or_above
 from app.models.domain import Invoice, Milestone
 from app.models.purchase_orders import PurchaseOrder
 from app.models.enums import (
-    AuditAction, DocumentType, InvoiceStatus, MilestoneSource,
+    AuditAction, InvoiceStatus, MilestoneSource,
     MilestoneStatus, POStatus,
 )
-from app.models.documents import Document
 from app.parsers.po_parser import parse_po
 from app.schemas import (
-    APIResponse, InvoiceCreate, InvoiceRead, POCreate, POParseUploadResponse,
+    APIResponse, InvoiceRead, POCreate, PODetail, POParseUploadResponse,
     PORead, POUpdate,
 )
 from app.services.audit_service import write_audit
@@ -37,8 +37,17 @@ UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 _ALLOWED_EXTENSIONS = {".pdf", ".docx", ".doc"}
 
 
-async def _get_po_or_404(db: AsyncSession, po_id: int, company_id: int | None) -> PurchaseOrder:
-    q = select(PurchaseOrder).where(PurchaseOrder.id == po_id)
+async def _get_po_or_404(
+    db: AsyncSession, po_id: int, company_id: int | None
+) -> PurchaseOrder:
+    q = (
+        select(PurchaseOrder)
+        .options(
+            selectinload(PurchaseOrder.invoices),
+            selectinload(PurchaseOrder.milestones),
+        )
+        .where(PurchaseOrder.id == po_id)
+    )
     if company_id is not None:
         q = q.where(PurchaseOrder.company_id == company_id)
     result = await db.execute(q)
@@ -47,6 +56,8 @@ async def _get_po_or_404(db: AsyncSession, po_id: int, company_id: int | None) -
         raise HTTPException(status_code=404, detail="Purchase order not found")
     return po
 
+
+# ── Parse ─────────────────────────────────────────────────────────────────────
 
 @router.post("/parse", response_model=APIResponse[POParseUploadResponse])
 async def upload_and_parse_po(
@@ -64,6 +75,8 @@ async def upload_and_parse_po(
     parsed = await run_in_threadpool(parse_po, str(save_path))
     return APIResponse(data=POParseUploadResponse(parsed=parsed, file_path=str(save_path)))
 
+
+# ── Create ────────────────────────────────────────────────────────────────────
 
 @router.post("", response_model=APIResponse[PORead], status_code=status.HTTP_201_CREATED)
 async def create_purchase_order(
@@ -88,6 +101,8 @@ async def create_purchase_order(
     return APIResponse(data=PORead.model_validate(po))
 
 
+# ── List ──────────────────────────────────────────────────────────────────────
+
 @router.get("", response_model=APIResponse[list[PORead]])
 async def list_purchase_orders(
     db: AsyncSession = Depends(get_db),
@@ -107,12 +122,17 @@ async def list_purchase_orders(
     if expiring_within_days is not None:
         import datetime as dt
         cutoff = date.today() + dt.timedelta(days=expiring_within_days)
-        q = q.where(PurchaseOrder.expiry_date <= cutoff, PurchaseOrder.expiry_date >= date.today())
+        q = q.where(
+            PurchaseOrder.expiry_date <= cutoff,
+            PurchaseOrder.expiry_date >= date.today(),
+        )
     result = await db.execute(q.order_by(PurchaseOrder.created_at.desc()))
     return APIResponse(data=[PORead.model_validate(p) for p in result.scalars().all()])
 
 
-@router.get("/{po_id}", response_model=APIResponse[PORead])
+# ── Get single (with linked invoices + milestones) ────────────────────────────
+
+@router.get("/{po_id}", response_model=APIResponse[PODetail])
 async def get_purchase_order(
     po_id: int,
     db: AsyncSession = Depends(get_db),
@@ -120,8 +140,10 @@ async def get_purchase_order(
     company_id: int | None = Depends(get_company_scope),
 ):
     po = await _get_po_or_404(db, po_id, company_id)
-    return APIResponse(data=PORead.model_validate(po))
+    return APIResponse(data=PODetail.model_validate(po))
 
+
+# ── Update / Confirm ──────────────────────────────────────────────────────────
 
 @router.put("/{po_id}", response_model=APIResponse[PORead])
 async def update_purchase_order(
@@ -134,25 +156,46 @@ async def update_purchase_order(
     po = await _get_po_or_404(db, po_id, company_id)
     for field, value in body.model_dump(exclude_none=True).items():
         setattr(po, field, value)
+
+    # ── Confirm PO → set active, auto-create milestone, send alert ────────────
     if body.status == POStatus.active and po.status == POStatus.draft:
         po.confirmed_by = current_user.id
-        if po.expiry_date:
+        milestone_date = getattr(po, "delivery_date", None) or po.expiry_date
+        if milestone_date:
             milestone = Milestone(
                 invoice_id=None,
                 title=f"PO {po.po_number} — {po.customer_name}",
-                description=f"Auto-created from PO {po.po_number}",
-                end_date=po.expiry_date,
+                description=f"Auto-created from PO {po.po_number}. Value: {po.total_value} {getattr(po, 'currency', 'AED')}",
+                end_date=milestone_date,
                 amount=po.total_value,
                 status=MilestoneStatus.pending,
                 po_id=po.id,
                 source=MilestoneSource.po_generated,
             )
             db.add(milestone)
+        # Send internal alert to Vivek, Akhilan, Deepak
+        try:
+            from app.services.email_service import send_internal_alert
+            send_internal_alert(
+                subject=f"New PO received from {po.customer_name}",
+                body=(
+                    f"PO {po.po_number} from {po.customer_name} has been confirmed.\n"
+                    f"Value: {po.total_value} {getattr(po, 'currency', 'AED')}\n"
+                    f"Milestone end date: {milestone_date}\n"
+                    f"Payment terms: {po.payment_terms}"
+                ),
+                recipients=settings.MILESTONE_ALERT_EMAILS,
+            )
+        except Exception as e:
+            logger.warning("PO confirm alert failed (non-fatal): %s", e)
+
     await write_audit(db, current_user.id, "purchase_order", po.id, AuditAction.updated)
     await db.commit()
     await db.refresh(po)
     return APIResponse(data=PORead.model_validate(po))
 
+
+# ── Close ─────────────────────────────────────────────────────────────────────
 
 @router.post("/{po_id}/close", response_model=APIResponse[PORead])
 async def close_purchase_order(
@@ -169,6 +212,8 @@ async def close_purchase_order(
     return APIResponse(data=PORead.model_validate(po))
 
 
+# ── Raise Invoice from PO ─────────────────────────────────────────────────────
+
 @router.post("/{po_id}/create-invoice", response_model=APIResponse[InvoiceRead])
 async def create_invoice_from_po(
     po_id: int,
@@ -176,45 +221,83 @@ async def create_invoice_from_po(
     current_user=Depends(require_entry_or_above),
     company_id: int | None = Depends(get_company_scope),
 ):
-    from app.models.domain import Invoice
-    from datetime import timedelta
     po = await _get_po_or_404(db, po_id, company_id)
     if po.status not in (POStatus.active, POStatus.partially_invoiced):
-        raise HTTPException(status_code=400, detail="PO must be active to raise an invoice")
+        raise HTTPException(
+            status_code=400, detail="PO must be active or partially invoiced to raise an invoice"
+        )
+
     today = date.today()
+    # Determine due date from payment_terms if possible
+    due_days = 30
+    if po.payment_terms:
+        import re
+        m = re.search(r"(\d+)", po.payment_terms)
+        if m:
+            due_days = int(m.group(1))
+
     invoice = Invoice(
         company_id=po.company_id,
         uploaded_by=current_user.id,
         invoice_number=f"INV-{po.po_number}-{uuid.uuid4().hex[:6].upper()}",
         customer_name=po.customer_name,
         amount=po.total_value,
-        currency="USD",
+        currency=getattr(po, "currency", None) or "AED",
         issue_date=today,
-        due_date=today + timedelta(days=30),
+        due_date=today + timedelta(days=due_days),
         status=InvoiceStatus.draft,
         description=f"Invoice raised from PO {po.po_number}",
         po_id=po.id,
     )
     db.add(invoice)
-    po.status = POStatus.invoiced
-    await write_audit(db, current_user.id, "invoice", 0, AuditAction.created)
+    await db.flush()
+
+    # Auto-create milestone for this invoice (same as invoice flow)
+    due = invoice.due_date
+    from app.models.inovice_remainder import InvoiceReminder
+    milestone = Milestone(
+        invoice_id=invoice.id,
+        title=f"Payment due — {invoice.invoice_number}",
+        end_date=due,
+        amount=invoice.amount,
+        status=MilestoneStatus.pending,
+        po_id=po.id,
+        source=MilestoneSource.po_generated,
+    )
+    db.add(milestone)
+
+    # Auto-create reminder 3 days before due (same as invoice flow)
+    reminder_date = due - timedelta(days=3)
+    reminder = InvoiceReminder(
+        invoice_id=invoice.id,
+        scheduled_at=datetime.combine(reminder_date, datetime.min.time()).replace(tzinfo=timezone.utc),
+    )
+    db.add(reminder)
+
+    # Update PO status
+    existing_invoices = po.invoices or []
+    po.status = POStatus.partially_invoiced if len(existing_invoices) > 0 else POStatus.partially_invoiced
+
+    await write_audit(db, current_user.id, "invoice", invoice.id, AuditAction.created)
+    await write_audit(db, current_user.id, "purchase_order", po.id, AuditAction.updated)
     await db.commit()
     await db.refresh(invoice)
-    return APIResponse(data=InvoiceRead.model_validate(invoice))
+    return APIResponse(data=InvoiceRead.model_validate(invoice), message="Invoice created from PO")
 
+
+# ── List invoices for a PO ────────────────────────────────────────────────────
 
 @router.get("/{po_id}/invoices", response_model=APIResponse[list[InvoiceRead]])
 async def list_invoices_for_po(
     po_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(require_entry_or_above),
+    _=Depends(require_entry_or_above),
     company_id: int | None = Depends(get_company_scope),
 ):
-    from app.models.domain import Invoice
-    from sqlalchemy import select
     po = await _get_po_or_404(db, po_id, company_id)
     result = await db.execute(
-        select(Invoice).where(Invoice.po_id == po.id).order_by(Invoice.created_at.desc())
+        select(Invoice)
+        .where(Invoice.po_id == po.id)
+        .order_by(Invoice.created_at.desc())
     )
-    invoices = result.scalars().all()
-    return APIResponse(data=[InvoiceRead.model_validate(i) for i in invoices])
+    return APIResponse(data=[InvoiceRead.model_validate(i) for i in result.scalars().all()])
