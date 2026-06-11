@@ -268,13 +268,25 @@ async def create_invoice_from_po(
     db.add(invoice)
     await db.flush()
 
-    # Link invoice to existing PO milestone if one exists
+    # Link invoice to existing PO milestone and update end_date to invoice due date
     from sqlalchemy import select as sa_select
     existing_milestone = (await db.execute(
         sa_select(Milestone).where(Milestone.po_id == po.id, Milestone.invoice_id == None)
     )).scalar_one_or_none()
     if existing_milestone:
         existing_milestone.invoice_id = invoice.id
+        existing_milestone.end_date = invoice.due_date
+        # Update reminder to 7 days before invoice due date
+        from app.models.domain import Reminder as ReminderModel
+        existing_reminder = (await db.execute(
+            sa_select(ReminderModel).where(ReminderModel.po_id == po.id)
+        )).scalar_one_or_none()
+        if existing_reminder:
+            existing_reminder.scheduled_at = datetime.combine(
+                invoice.due_date - timedelta(days=7), datetime.min.time()
+            ).replace(tzinfo=timezone.utc)
+            existing_reminder.message = f"Invoice {invoice.invoice_number} due in 7 days — {po.customer_name}"
+            existing_reminder.invoice_id = invoice.id
 
     # Update PO status
     existing_invoices = po.invoices or []
