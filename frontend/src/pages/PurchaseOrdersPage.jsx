@@ -9,6 +9,7 @@ import {
   createPO,
   getPO,
   raiseInvoice,
+  updatePO,
 } from "../api/purchaseOrders";
 
 import Button from "../components/ui/Button";
@@ -201,6 +202,17 @@ function PODetailModal({ po, open, onClose, onCreateInvoice }) {
     enabled: open && !!po?.id,
   });
 
+  const confirmMut = useMutation({
+    mutationFn: () => updatePO(po.id, { status: "active" }),
+    onSuccess: () => {
+      toast.success("PO confirmed — milestone and reminder created");
+      qc.invalidateQueries({ queryKey: ["purchase-orders"] });
+      qc.invalidateQueries({ queryKey: ["purchase-order", po?.id] });
+      qc.invalidateQueries({ queryKey: ["milestones"] });
+    },
+    onError: (e) => toast.error(e?.response?.data?.detail || "Failed to confirm PO"),
+  });
+
   const invoiceMut = useMutation({
     mutationFn: () => raiseInvoice(po.id),
     onSuccess: (data) => {
@@ -233,6 +245,18 @@ function PODetailModal({ po, open, onClose, onCreateInvoice }) {
             <p className="text-sm text-gray-500">{d.customer_name}</p>
           </div>
           <div className="flex items-center gap-2">
+            {d.status === "draft" && (
+              <button
+                onClick={() => confirmMut.mutate()}
+                disabled={confirmMut.isPending}
+                className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50"
+              >
+                {confirmMut.isPending
+                  ? <><Loader2 className="h-4 w-4 animate-spin" /> Confirming…</>
+                  : "✓ Confirm PO"
+                }
+              </button>
+            )}
             {canInvoice && (
               <button
                 onClick={() => invoiceMut.mutate()}

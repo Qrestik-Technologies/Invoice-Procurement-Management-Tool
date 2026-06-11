@@ -31,3 +31,5 @@ export const raiseInvoice     = (id) =>
 
 export const getInvoicesForPO = (id) =>
   client.get(`/purchase-orders/${id}/invoices`).then((r) => r.data.data);
+
+export const updatePO = (id, data) => client.put(`/purchase-orders/${id}`, data).then((r) => r.data.data);
