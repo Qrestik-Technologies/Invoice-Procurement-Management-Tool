@@ -115,7 +115,7 @@ export default function MilestonesPage() {
                     {invoices.find(i => i.id === m.invoice_id)?.invoice_number || `#${m.invoice_id}`}
                   </td>
                   <td className="px-5 py-3">{m.amount ? `${invoices.find(i => i.id === m.invoice_id)?.currency || 'USD'} ${Number(m.amount).toLocaleString()}` : '—'}</td>
-                  <td className="px-5 py-3 text-[#6B7280]">{m.due_date || '—'}</td>
+                  <td className="px-5 py-3 text-[#6B7280]">{m.end_date || m.due_date || '—'}</td>
                   <td className="px-5 py-3">
                     <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${STATUS_COLORS[m.status] || ''}`}>
                       {m.status}
