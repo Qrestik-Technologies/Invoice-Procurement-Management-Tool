@@ -20,7 +20,7 @@ export function OrganizationProvider({ children }) {
     setError(null);
     try {
       const list = await fetchCompanies();
-      const active = (list || []).filter((o) => o.is_active !== false);
+      const active = (list || []).filter((o) => o.is_active !== false).sort((a, b) => { if (a.name.toLowerCase().includes('qrestik')) return -1; if (b.name.toLowerCase().includes('qrestik')) return 1; return 0; });
       setOrganizations(active);
 
       const stored = getActiveCompanyId();

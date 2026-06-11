@@ -322,7 +322,7 @@ async def create_invoice_from_po(
 
     # Update PO status
     existing_invoices = po.invoices or []
-    po.status = POStatus.partially_invoiced if len(existing_invoices) > 0 else POStatus.partially_invoiced
+    po.status = POStatus.fully_invoiced
 
     await write_audit(db, current_user.id, "invoice", invoice.id, AuditAction.created)
     await write_audit(db, current_user.id, "purchase_order", po.id, AuditAction.updated)
