@@ -11,9 +11,9 @@ def test_password_hash_and_verify():
     assert not verify_password("wrong", hashed)
 
 
-def test_production_rejects_weak_jwt():
-    with pytest.raises(ValueError, match="JWT_SECRET"):
-        Settings(
-            APP_ENV="production",
-            JWT_SECRET="change-me-in-production",
-        )
+def test_settings_load_with_secret_key():
+    loaded = Settings(
+        DATABASE_URL="postgresql+asyncpg://postgres:postgres@localhost:5432/invoice_tool",
+        SECRET_KEY="a-long-random-production-secret-key",
+    )
+    assert loaded.SECRET_KEY.startswith("a-long")

@@ -154,7 +154,7 @@ def parse_po(file_path: str) -> dict:
 
     payment_terms = _search(r"PAYMENT\s*[:\-]\s*([^\n]{1,40})", text, group=1)
 
-    currency = _search(r"CURRENCY\s*[:\-]?\s*([A-Z]{3})", text, group=1) or "AED"
+    currency = "USD"
 
     # Customer: first non-empty line, strip Arabic garbage
     lines = [l.strip() for l in text.splitlines() if l.strip()]

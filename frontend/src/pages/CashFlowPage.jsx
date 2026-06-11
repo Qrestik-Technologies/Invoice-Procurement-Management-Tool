@@ -10,16 +10,16 @@ import PageHeader from '../components/ui/PageHeader';
 
 // ── Utilities ─────────────────────────────────────────────────────────────────
 
-function fmt(v, currency = 'USD') {
+function fmt(v) {
   const n = Number(v || 0);
-  const sym = currency === 'AED' ? 'AED ' : '$';
+  const sym = '$';
   if (n >= 1_000_000) return `${sym}${(n / 1_000_000).toFixed(1)}M`;
   if (n >= 1_000) return `${sym}${(n / 1_000).toFixed(1)}K`;
   return `${sym}${n.toLocaleString(undefined, { minimumFractionDigits: 2 })}`;
 }
 
-function fmtFull(v, currency = 'USD') {
-  const sym = currency === 'AED' ? 'AED ' : '$';
+function fmtFull(v) {
+  const sym = '$';
   return `${sym}${Number(v || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}`;
 }
 
@@ -68,7 +68,7 @@ function MetricCard({ label, value, sub, icon: Icon, color, bg, trend }) {
 
 // ── Bar Chart (pure SVG) ──────────────────────────────────────────────────────
 
-function BarChart({ data, currency = "AED" }) {
+function BarChart({ data }) {
   if (!data || data.length === 0) return null;
 
   const W = 620, H = 200, PAD = { top: 16, right: 16, bottom: 40, left: 56 };
@@ -92,7 +92,7 @@ function BarChart({ data, currency = "AED" }) {
         <g key={y}>
           <line x1={PAD.left} x2={W - PAD.right} y1={y} y2={y} stroke="#F3F4F6" strokeWidth="1" />
           <text x={PAD.left - 6} y={y + 4} textAnchor="end" fontSize="10" fill="#9CA3AF">
-            {fmt(val, currency)}
+            {fmt(val)}
           </text>
         </g>
       ))}
@@ -143,7 +143,7 @@ function BarChart({ data, currency = "AED" }) {
 
 // ── Receivables Table ─────────────────────────────────────────────────────────
 
-function ReceivablesTable({ invoices, currency = "AED" }) {
+function ReceivablesTable({ invoices }) {
   if (!invoices || invoices.length === 0) {
     return (
       <p className="text-xs text-[#9CA3AF] py-6 text-center">No open receivables for this period.</p>
@@ -164,7 +164,7 @@ function ReceivablesTable({ invoices, currency = "AED" }) {
         {invoices.map((inv) => (
           <tr key={inv.id} className="border-b border-border last:border-0">
             <td className="py-2.5 pr-4 font-medium text-[#111827]">{inv.customer || '—'}</td>
-            <td className="py-2.5 pr-4 text-[#374151]">{fmtFull(inv.amount, currency)}</td>
+            <td className="py-2.5 pr-4 text-[#374151]">{fmtFull(inv.amount)}</td>
             <td className="py-2.5 pr-4 text-[#6B7280]">
               <span className="flex items-center gap-1">
                 <Calendar className="h-3 w-3 shrink-0" />
@@ -226,14 +226,14 @@ export default function CashFlowPage() {
             <span className="h-1.5 w-1.5 rounded-full bg-primary inline-block" />
             Period: <span className="font-medium text-[#374151]">{summary.period_start} → {summary.period_end}</span>
             <span className="mx-1 text-[#D1D5DB]">·</span>
-            <span className="font-medium text-[#374151]">{summary.currency}</span>
+            <span className="font-medium text-[#374151]">USD</span>
           </div>
 
           {/* Primary metrics */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
             <MetricCard
               label="Total Invoiced"
-              value={fmt(summary.total_invoiced, summary.currency)}
+              value={fmt(summary.total_invoiced)}
               sub="All invoices in period"
               icon={FileText}
               color="text-blue-600"
@@ -241,7 +241,7 @@ export default function CashFlowPage() {
             />
             <MetricCard
               label="Total Received"
-              value={fmt(summary.total_received, summary.currency)}
+              value={fmt(summary.total_received)}
               sub={`${collectionRate}% collection rate`}
               trend={collectionRate}
               icon={TrendingUp}
@@ -250,7 +250,7 @@ export default function CashFlowPage() {
             />
             <MetricCard
               label="Outstanding"
-              value={fmt(summary.total_outstanding, summary.currency)}
+              value={fmt(summary.total_outstanding)}
               sub="Awaiting payment"
               trend={summary.total_outstanding > 0 ? -pct(summary.total_outstanding, summary.total_invoiced) : 0}
               icon={TrendingDown}
@@ -293,7 +293,7 @@ export default function CashFlowPage() {
                 <BarChart2 className="h-4 w-4 text-[#6B7280]" />
                 <p className="text-sm font-medium text-[#374151]">Invoiced vs Received (6 months)</p>
               </div>
-              <BarChart data={monthly} currency={summary?.currency ?? "AED"} />
+              <BarChart data={monthly} />
             </div>
 
             {/* Receivables table */}
@@ -302,7 +302,7 @@ export default function CashFlowPage() {
                 <DollarSign className="h-4 w-4 text-[#6B7280]" />
                 <p className="text-sm font-medium text-[#374151]">Open Receivables</p>
               </div>
-              <ReceivablesTable invoices={summary.invoices} currency={summary?.currency ?? "AED"} />
+              <ReceivablesTable invoices={summary.invoices} />
             </div>
           </div>
 
@@ -319,8 +319,8 @@ export default function CashFlowPage() {
               />
             </div>
             <div className="mt-2 flex justify-between text-xs text-[#9CA3AF]">
-              <span>Received: {fmtFull(summary.total_received, summary.currency)}</span>
-              <span>Invoiced: {fmtFull(summary.total_invoiced, summary.currency)}</span>
+              <span>Received: {fmtFull(summary.total_received)}</span>
+              <span>Invoiced: {fmtFull(summary.total_invoiced)}</span>
             </div>
           </div>
         </>

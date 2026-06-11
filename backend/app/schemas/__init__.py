@@ -426,7 +426,7 @@ class POCreate(BaseModel):
     total_value: Decimal = Decimal("0")
     billing_terms: str | None = None
     payment_terms: str | None = None
-    currency: str = "AED"
+    currency: str = "USD"
     ship_to_address: str | None = None
     bill_to_address: str | None = None
     authorised_signatory: str | None = None

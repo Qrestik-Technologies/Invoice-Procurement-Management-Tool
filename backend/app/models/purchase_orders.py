@@ -24,7 +24,7 @@ class PurchaseOrder(Base):
     ship_to_address: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     bill_to_address: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     delivery_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
-    currency: Mapped[Optional[str]] = mapped_column(String(10), nullable=True, default='AED')
+    currency: Mapped[Optional[str]] = mapped_column(String(10), nullable=True, default="USD")
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     authorised_signatory: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     line_items: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)

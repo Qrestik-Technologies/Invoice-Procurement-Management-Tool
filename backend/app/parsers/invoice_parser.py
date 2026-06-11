@@ -108,7 +108,7 @@ def _extract_qrestik(text: str) -> dict:
     if m:
         data["invoice_date"] = _parse_date(m.group(1))
 
-    data["currency"] = "AED"
+    data["currency"] = "USD"
     data["vendor_name"] = "Qrestik Technologies L.L.C"
 
     # Total — "AED 7,345"
@@ -339,7 +339,7 @@ def _extract_generic(text: str) -> dict:
             data["subtotal"] = sorted(amounts)[-2]
             data["tax"] = data["total"] - data["subtotal"]
 
-    data["currency"] = "EUR" if "€" in text else "USD"
+    data["currency"] = "USD"
 
     # NER for customer name
     try:

@@ -127,7 +127,7 @@ async def cash_flow_summary(
     company_id: Annotated[int | None, Depends(get_company_scope)] = None,
     start: Optional[date] = Query(None, description="Period start (YYYY-MM-DD)"),
     end: Optional[date] = Query(None, description="Period end (YYYY-MM-DD)"),
-    currency: str = Query("AED"),
+    currency: str = Query("USD"),
 ):
     today = date.today()
     period_start = start or date(today.year, today.month, 1)
@@ -142,8 +142,7 @@ async def cash_flow_summary(
         q = q.where(Invoice.company_id == company_id)
     result = await db.execute(q)
     invoices = result.scalars().all()
-    # Auto-detect currency from invoices, fall back to query param
-    detected_currency = invoices[0].currency if invoices else currency
+    detected_currency = "USD"
 
     total_invoiced = sum((i.amount for i in invoices), Decimal("0"))
     received = [i for i in invoices if i.status in (InvoiceStatus.received, InvoiceStatus.paid)]

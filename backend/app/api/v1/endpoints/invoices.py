@@ -109,6 +109,7 @@ async def create_invoice(
         raise HTTPException(status_code=400, detail="Invoice number already exists for this organization")
 
     payload = body.model_dump(exclude={"company_id", "subtotal", "tax", "total", "notes", "invoice_date", "file_path"})
+    payload["currency"] = "USD"
     inv = Invoice(**payload, company_id=resolved_company, uploaded_by=current_user.id)
     db.add(inv)
     await db.flush()
@@ -192,6 +193,7 @@ async def update_invoice(
 ):
     inv = await _get_invoice_or_404(db, invoice_id)
     changes = body.model_dump(exclude_none=True)
+    changes["currency"] = "USD"
     for field, value in changes.items():
         setattr(inv, field, value)
     await write_audit(db, changed_by=current_user.id, entity_type="invoice",

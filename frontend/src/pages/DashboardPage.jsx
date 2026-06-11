@@ -68,8 +68,8 @@ export default function DashboardPage() {
       </div>
 
       <div className="mb-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard icon={TrendingUp} label="Total Invoiced" value={summary ? `${summary.currency} ${Number(summary.total_invoiced).toLocaleString()}` : null} color="bg-primary" to="/invoices" />
-        <StatCard icon={FileText} label="Total Received" value={summary ? `${summary.currency} ${Number(summary.total_received).toLocaleString()}` : null} color="bg-emerald-500" to="/invoices" />
+        <StatCard icon={TrendingUp} label="Total Invoiced" value={summary ? `$${Number(summary.total_invoiced).toLocaleString()}` : null} color="bg-primary" to="/invoices" />
+        <StatCard icon={FileText} label="Total Received" value={summary ? `$${Number(summary.total_received).toLocaleString()}` : null} color="bg-emerald-500" to="/invoices" />
         <StatCard icon={AlertCircle} label="Overdue" value={summary?.overdue_count} color="bg-red-500" to="/invoices?status=overdue" />
         <StatCard icon={Users} label="Drafts" value={summary?.draft_count} color="bg-amber-400" to="/invoices?status=draft" />
       </div>
@@ -79,7 +79,7 @@ export default function DashboardPage() {
         <StatCard icon={FileText} label="Active POs" value={summary?.po_active_count ?? "—"} color="bg-indigo-500" to="/purchase-orders" />
         <StatCard icon={FileText} label="Draft POs" value={summary?.po_draft_count ?? "—"} color="bg-gray-400" to="/purchase-orders" />
         <StatCard icon={FileText} label="Invoiced POs" value={summary?.po_invoiced_count ?? "—"} color="bg-blue-500" to="/purchase-orders" />
-        <StatCard icon={TrendingUp} label="Total PO Value" value={summary ? `${summary.currency} ${Number(summary.po_total_value).toLocaleString()}` : "—"} color="bg-violet-500" to="/purchase-orders" />
+        <StatCard icon={TrendingUp} label="Total PO Value" value={summary ? `$${Number(summary.po_total_value).toLocaleString()}` : "—"} color="bg-violet-500" to="/purchase-orders" />
       </div>
 
       <div className="rounded-xl border border-border bg-white shadow-sm">
@@ -103,7 +103,7 @@ export default function DashboardPage() {
               {invoices.map(inv => (
                 <tr key={inv.id} className="border-b border-border last:border-0 hover:bg-gray-50">
                   <td className="px-6 py-3 font-medium text-[#111827]">{inv.invoice_number}</td>
-                  <td className="px-6 py-3">{inv.currency} {Number(inv.amount).toLocaleString()}</td>
+                  <td className="px-6 py-3">${Number(inv.amount).toLocaleString()}</td>
                   <td className="px-6 py-3 text-[#6B7280]">{inv.due_date}</td>
                   <td className="px-6 py-3">
                     <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${statusColor[inv.status] || ''}`}>

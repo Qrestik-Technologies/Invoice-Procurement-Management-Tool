@@ -28,6 +28,8 @@ class Customer(Base):
     email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     phone: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     address: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    ship_to_address: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    payment_terms: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     tax_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

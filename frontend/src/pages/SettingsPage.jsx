@@ -31,8 +31,6 @@ const ROLES = [
   { value: 'readonly', label: 'Readonly — view only' },
 ];
 
-const CURRENCIES = ['USD', 'EUR', 'GBP', 'AED', 'SAR', 'INR'];
-
 const EMPTY_COMPANY = {
   name: '', legal_name: '', email: '', phone: '', address: '',
   tax_id: '', website: '', default_currency: 'USD', is_active: true, notes: '',
@@ -367,10 +365,10 @@ export default function SettingsPage() {
             </div>
             <SettingsCard
               title="Organizations"
-              description="Add Inginitum Global, Qrestik Technologies, or other entities. Users switch between these on the dashboard; all data is scoped to the active organization."
+              description="Add Infinitum Global, Qrestik Technologies, or other entities. Users switch between these on the dashboard; all data is scoped to the active organization."
             >
               {companies.length === 0 ? (
-                <p className="text-sm text-[#9CA3AF]">No organizations yet. Add Inginitum Global and Qrestik Technologies.</p>
+                <p className="text-sm text-[#9CA3AF]">No organizations yet. Add Infinitum Global and Qrestik Technologies.</p>
               ) : (
                 <div className="overflow-x-auto">
                   <table className="w-full text-left text-sm">
@@ -513,9 +511,7 @@ export default function SettingsPage() {
               footer={<Button type="submit">Save changes</Button>}
             >
               <div className="grid gap-4 sm:grid-cols-2">
-                <Select label="Default currency" value={invoiceForm.default_currency} onChange={setInv('default_currency')}>
-                  {CURRENCIES.map((c) => <option key={c} value={c}>{c}</option>)}
-                </Select>
+                <Input label="Default currency" value="USD" readOnly disabled className="bg-gray-50" />
                 <Input label="Payment terms (days)" type="number" min={1} max={365} value={invoiceForm.default_payment_terms_days} onChange={setInv('default_payment_terms_days')} />
                 <Input label="Invoice number prefix" value={invoiceForm.invoice_number_prefix} onChange={setInv('invoice_number_prefix')} placeholder="INV-" />
                 <Input label="Reminder interval (days)" type="number" min={1} max={90} value={invoiceForm.reminder_interval_days} onChange={setInv('reminder_interval_days')} />
@@ -600,9 +596,7 @@ export default function SettingsPage() {
             <Input label="Legal name" value={companyForm.legal_name} onChange={setCo('legal_name')} />
             <Input label="Email" type="email" value={companyForm.email} onChange={setCo('email')} />
             <Input label="Phone" value={companyForm.phone} onChange={setCo('phone')} />
-            <Select label="Default currency" value={companyForm.default_currency} onChange={setCo('default_currency')}>
-              {CURRENCIES.map((c) => <option key={c} value={c}>{c}</option>)}
-            </Select>
+            <Input label="Default currency" value="USD" readOnly disabled className="bg-gray-50" />
             <div className="flex items-end pb-1">
               <Checkbox label="Active" checked={companyForm.is_active} onChange={setCo('is_active')} />
             </div>

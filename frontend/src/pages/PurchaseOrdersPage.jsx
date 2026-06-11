@@ -299,7 +299,7 @@ function PODetailModal({ po, open, onClose, onCreateInvoice }) {
                 ["Currency",       d.currency || "USD"],
                 ["Delivery Date",  d.delivery_date || "—"],
                 ["Expiry Date",    d.expiry_date || "—"],
-                ["Total Value",    `${d.currency || "USD"} ${Number(d.total_value || 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}`],
+                ["Total Value",    `$${Number(d.total_value || 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}`],
               ].map(([label, value]) => (
                 <div key={label} className="rounded-xl border border-gray-100 bg-gray-50 px-4 py-3">
                   <p className="text-xs text-gray-500">{label}</p>
@@ -516,7 +516,7 @@ function NewPOModal({ open, onClose }) {
         delivery_date:        form.delivery_date || null,
         total_value:          parseFloat(form.net_amount || form.subtotal || 0),
         payment_terms:        form.payment_terms || null,
-        currency:             form.currency,
+        currency:             "USD",
         bill_to_address:      form.customer_address || null,
         authorised_signatory: null,
         notes:                form.notes || null,
@@ -590,9 +590,7 @@ function NewPOModal({ open, onClose }) {
               <input className={ic} placeholder="30 DAYS" value={form.payment_terms} onChange={set("payment_terms")} />
             </Field>
             <Field label="Currency">
-              <select className={ic} value={form.currency} onChange={set("currency")}>
-                {["USD","AED","EUR","GBP","INR","SAR"].map((c) => <option key={c}>{c}</option>)}
-              </select>
+              <input className={`${ic} bg-gray-50`} value="USD" readOnly disabled />
             </Field>
           </div>
 
@@ -751,7 +749,7 @@ export default function PurchaseOrdersPage() {
         {[
           { label: "Total POs",          value: pos.length },
           { label: "Active",             value: activeCount },
-          { label: "Total PO Value",     value: pos.length ? `${pos[0]?.currency || "USD"} ${totalValue.toLocaleString()}` : "—" },
+          { label: "Total PO Value",     value: pos.length ? `$${totalValue.toLocaleString()}` : "—" },
           { label: "Expiring This Month",value: expiringSoon },
         ].map(({ label, value }) => (
           <div key={label} className="rounded-xl border border-gray-200 bg-white px-4 py-3">
@@ -816,7 +814,7 @@ export default function PurchaseOrdersPage() {
                   <td className="px-4 py-3 font-semibold text-gray-900">{po.po_number}</td>
                   <td className="px-4 py-3 text-gray-700">{po.customer_name}</td>
                   <td className="px-4 py-3 text-gray-700">
-                    {po.currency || "USD"}{" "}
+                    ${" "}
                     {Number(po.total_value || 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}
                   </td>
                   <td className="px-4 py-3 text-gray-500">{po.po_date || "—"}</td>

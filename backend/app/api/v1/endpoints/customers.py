@@ -52,7 +52,12 @@ async def create_customer(
     resolved_company = body.company_id or company_id
     if not resolved_company:
         raise HTTPException(status_code=400, detail="Select an organization first")
-    payload = body.model_dump(exclude={"company_id"})
+    allowed = {c.key for c in Customer.__table__.columns}
+    payload = {
+        k: v
+        for k, v in body.model_dump(exclude={"company_id"}).items()
+        if k in allowed
+    }
     customer = Customer(**payload, company_id=resolved_company)
     db.add(customer)
     await db.flush()
@@ -75,8 +80,10 @@ async def update_customer(
     if not customer:
         raise HTTPException(status_code=404, detail="Customer not found")
 
+    allowed = {c.key for c in Customer.__table__.columns}
     for field, value in body.model_dump(exclude_none=True).items():
-        setattr(customer, field, value)
+        if field in allowed:
+            setattr(customer, field, value)
     await write_audit(db, changed_by=current_user.id, entity_type="customer",
                       entity_id=customer_id, action=AuditAction.updated)
     await db.commit()

@@ -29,7 +29,7 @@ const EMPTY_FORM = {
   amount: '', currency: 'USD', issue_date: '', due_date: '', notes: '', customer_name: '',
 };
 
-const ALLOWED_CUSTOMERS = ['infinitum global', 'inginitum global', 'qrestik technologies'];
+const ALLOWED_CUSTOMERS = ['infinitum global', 'qrestik technologies'];
 
 const DEFAULT_CUSTOMERS = [
   { id: 1, name: 'Qrestik Technologies' },
@@ -286,7 +286,7 @@ export default function InvoicesPage() {
         subtotal: parsed.subtotal != null ? String(parsed.subtotal) : f.subtotal,
         tax: parsed.tax != null ? String(parsed.tax) : f.tax,
         amount: amountVal ? String(amountVal) : f.amount,
-        currency: parsed.currency || f.currency,
+        currency: 'USD',
         issue_date: parsed.invoice_date ? String(parsed.invoice_date) : f.issue_date,
         due_date: parsed.due_date ? String(parsed.due_date) : f.due_date,
         notes: parsed.notes || f.notes,
@@ -320,7 +320,7 @@ export default function InvoicesPage() {
       await apiClient.post('/invoices', {
         invoice_number: form.invoice_number,
         company_id: form.organization_id ? Number(form.organization_id) : null,
-        currency: form.currency,
+        currency: 'USD',
         invoice_date: form.issue_date,
         due_date: form.due_date,
         subtotal: subtotal,
@@ -537,9 +537,7 @@ export default function InvoicesPage() {
                 <Input label="Subtotal" type="number" step="0.01" value={form.subtotal} onChange={set('subtotal')} placeholder="0.00" />
                 <Input label="Tax" type="number" step="0.01" value={form.tax} onChange={set('tax')} placeholder="0.00" />
                 <Input label="Amount" type="number" step="0.01" value={form.amount} onChange={set('amount')} required placeholder="0.00" />
-                <Select label="Currency" value={form.currency} onChange={set('currency')}>
-                  {['USD', 'EUR', 'GBP', 'AED'].map(c => <option key={c}>{c}</option>)}
-                </Select>
+                <Input label="Currency" value="USD" readOnly disabled className="bg-gray-50" />
                 <Input label="Invoice Date" type="date" value={form.issue_date} onChange={set('issue_date')} required />
                 <Input label="Due Date" type="date" value={form.due_date} onChange={set('due_date')} required />
               </div>

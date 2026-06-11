@@ -27,7 +27,7 @@ def upgrade() -> None:
             INSERT INTO companies (name, legal_name, is_active, default_currency)
             SELECT v.name, v.legal_name, true, 'USD'
             FROM (VALUES
-                ('Inginitum Global', 'Inginitum Global'),
+                ('Infinitum Global', 'Infinitum Global'),
                 ('Qrestik Technologies', 'Qrestik Technologies')
             ) AS v(name, legal_name)
             WHERE NOT EXISTS (

@@ -86,12 +86,14 @@ async def create_purchase_order(
     current_user=Depends(require_entry_or_above),
     company_id: int | None = Depends(get_company_scope),
 ):
+    po_data = body.model_dump()
+    po_data["currency"] = "USD"
     po = PurchaseOrder(
         company_id=company_id or current_user.company_id,
         uploaded_by=current_user.id,
         file_path=file_path,
         status=POStatus.draft,
-        **body.model_dump(),
+        **po_data,
     )
     db.add(po)
     await db.flush()
@@ -183,7 +185,9 @@ async def update_purchase_order(
 ):
     po = await _get_po_or_404(db, po_id, company_id)
     old_status = po.status  # capture BEFORE applying updates
-    for field, value in body.model_dump(exclude_none=True).items():
+    updates = body.model_dump(exclude_none=True)
+    updates["currency"] = "USD"
+    for field, value in updates.items():
         setattr(po, field, value)
 
     # ── Confirm PO → set active, auto-create milestone, send alert ────────────
@@ -194,7 +198,7 @@ async def update_purchase_order(
             milestone = Milestone(
                 invoice_id=None,
                 title=f"PO {po.po_number} — {po.customer_name}",
-                description=f"Auto-created from PO {po.po_number}. Value: {po.total_value} {getattr(po, 'currency', 'AED')}",
+                description=f"Auto-created from PO {po.po_number}. Value: {po.total_value} {getattr(po, 'currency', 'USD')}",
                 end_date=milestone_date,
                 amount=po.total_value,
                 status=MilestoneStatus.pending,
@@ -224,7 +228,7 @@ async def update_purchase_order(
                 subject=f"New PO received from {po.customer_name}",
                 body=(
                     f"PO {po.po_number} from {po.customer_name} has been confirmed.\n"
-                    f"Value: {po.total_value} {getattr(po, 'currency', 'AED')}\n"
+                    f"Value: {po.total_value} {getattr(po, 'currency', 'USD')}\n"
                     f"Milestone end date: {milestone_date}\n"
                     f"Payment terms: {po.payment_terms}"
                 ),
@@ -286,7 +290,7 @@ async def create_invoice_from_po(
         invoice_number=f"INV-{po.po_number}-{uuid.uuid4().hex[:6].upper()}",
         customer_name=po.customer_name,
         amount=po.total_value,
-        currency=getattr(po, "currency", None) or "AED",
+        currency="USD",
         issue_date=today,
         due_date=today + timedelta(days=due_days),
         status=InvoiceStatus.sent,
