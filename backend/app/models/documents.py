@@ -15,6 +15,8 @@ class Document(Base):
     file_path: Mapped[str] = mapped_column(String(500), nullable=False)
     onedrive_url: Mapped[str | None] = mapped_column(String(1000))
     linked_invoice_id: Mapped[int | None] = mapped_column(ForeignKey("invoices.id"), index=True)
+    linked_po_id: Mapped[int | None] = mapped_column(ForeignKey("purchase_orders.id"), index=True)
+    customer_name: Mapped[str | None] = mapped_column(String(255))
     uploaded_by: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
     sync_status: Mapped[SyncStatus] = mapped_column(
         Enum(SyncStatus), nullable=False, default=SyncStatus.pending
@@ -23,4 +25,7 @@ class Document(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     linked_invoice = relationship("Invoice", back_populates="documents")
+    linked_po = relationship("PurchaseOrder", back_populates="documents")
     uploader = relationship("User", back_populates="documents")
+
+# patch applied below — do not duplicate

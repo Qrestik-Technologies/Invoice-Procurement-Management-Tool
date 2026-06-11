@@ -16,23 +16,25 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
+    setError('');
     try {
       await login(email, password);
       const user = await fetchMe();
       setUser(user);
+      toast.dismiss();
       toast.success('Signed in successfully');
       navigate('/');
     } catch (err) {
       if (err.response?.status === 403) {
-        // Account exists but email isn't verified yet.
-        toast('Please verify your email to continue', { icon: '\u2709\uFE0F' });
+        toast('Please verify your email to continue', { icon: '✉️' });
         navigate('/verify-email', { state: { email } });
       } else {
-        toast.error(err.response?.data?.detail || 'Invalid email or password');
+        setError(err.response?.data?.detail || 'Invalid email or password');
       }
     } finally {
       setLoading(false);
@@ -49,7 +51,7 @@ export default function LoginPage() {
           label="Email address"
           type="email"
           value={email}
-          onChange={(e) => setEmail(e.target.value)}
+          onChange={(e) => { setEmail(e.target.value); setError(''); }}
           required
           autoComplete="email"
           placeholder="you@qrestik.com"
@@ -65,10 +67,12 @@ export default function LoginPage() {
             <input
               type={showPassword ? 'text' : 'password'}
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              onChange={(e) => { setPassword(e.target.value); setError(''); }}
               required
               autoComplete="current-password"
-              className="w-full rounded-lg border border-border py-2 pl-3 pr-10 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+              className={`w-full rounded-lg border py-2 pl-3 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 ${
+                error ? 'border-red-400 focus:border-red-400' : 'border-border focus:border-primary'
+              }`}
             />
             <button
               type="button"
@@ -78,9 +82,10 @@ export default function LoginPage() {
               {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
             </button>
           </div>
+          {error && <p className="mt-1.5 text-xs text-red-500">{error}</p>}
         </div>
         <Button type="submit" className="w-full" size="lg" disabled={loading}>
-          {loading ? 'Signing in\u2026' : 'Sign In'}
+          {loading ? 'Signing in…' : 'Sign In'}
         </Button>
       </form>
     </AuthShell>

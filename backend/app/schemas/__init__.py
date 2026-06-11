@@ -474,3 +474,20 @@ class PODetail(PORead):
     """Extended PO read schema that includes linked invoices and milestones."""
     invoices: list[InvoiceRead] = []
     milestones: list[MilestoneRead] = []
+
+
+class DocumentRead(BaseModel):
+    id: int
+    filename: str
+    file_path: str
+    onedrive_url: str | None = None
+    linked_invoice_id: int | None = None
+    linked_po_id: int | None = None
+    customer_name: str | None = None
+    document_type: DocumentType
+    sync_status: str
+    created_at: datetime
+    uploader_name: str | None = None
+    linked_invoice_number: str | None = None
+
+    model_config = ConfigDict(from_attributes=True)

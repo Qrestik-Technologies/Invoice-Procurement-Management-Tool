@@ -42,5 +42,6 @@ class PurchaseOrder(Base):
     milestones = relationship("Milestone", back_populates="purchase_order")
     invoices = relationship("Invoice", back_populates="purchase_order")
     document = relationship("Document", foreign_keys=[document_id])
+    documents = relationship("Document", foreign_keys="Document.linked_po_id", back_populates="linked_po")
     uploader = relationship("User", foreign_keys=[uploaded_by])
     confirmer = relationship("User", foreign_keys=[confirmed_by])

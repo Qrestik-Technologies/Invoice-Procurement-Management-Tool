@@ -139,12 +139,35 @@ async def create_invoice(
     await db.refresh(inv)
 
     # ── Auto-upload invoice summary to OneDrive (once on create) ────────────
+    onedrive_url = None
     try:
         pdf_bytes = await run_in_threadpool(export_invoice_to_pdf, inv)
         od_filename = f"invoice_{inv.invoice_number}.pdf"
-        await run_in_threadpool(upload_file_to_onedrive, pdf_bytes, od_filename)
+        metadata = await run_in_threadpool(upload_file_to_onedrive, pdf_bytes, od_filename)
+        if metadata:
+            onedrive_url = metadata.get("webUrl")
     except Exception as exc:
         logger.warning("OneDrive upload error (non-fatal): %s", exc)
+    # ────────────────────────────────────────────────────────────────────────
+
+    # ── Auto-log Document record ─────────────────────────────────────────────
+    try:
+        from app.models.documents import Document
+        from app.models.enums import DocumentType, SyncStatus
+        doc = Document(
+            filename=f"invoice_{inv.invoice_number}.pdf",
+            file_path=onedrive_url or f"invoice_{inv.invoice_number}.pdf",
+            onedrive_url=onedrive_url,
+            linked_invoice_id=inv.id,
+            uploaded_by=current_user.id,
+            document_type=DocumentType.invoice,
+            sync_status=SyncStatus.synced if onedrive_url else SyncStatus.pending,
+            customer_name=inv.customer_name,
+        )
+        db.add(doc)
+        await db.commit()
+    except Exception as exc:
+        logger.warning("Document auto-log failed (non-fatal): %s", exc)
     # ────────────────────────────────────────────────────────────────────────
 
     return APIResponse(data=InvoiceRead.model_validate(inv), message="Invoice created")

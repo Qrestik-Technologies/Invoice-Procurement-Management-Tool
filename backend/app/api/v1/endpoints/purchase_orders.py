@@ -261,7 +261,7 @@ async def create_invoice_from_po(
         currency=getattr(po, "currency", None) or "AED",
         issue_date=today,
         due_date=today + timedelta(days=due_days),
-        status=InvoiceStatus.draft,
+        status=InvoiceStatus.sent,
         description=f"Invoice raised from PO {po.po_number}",
         po_id=po.id,
     )
@@ -311,6 +311,28 @@ async def create_invoice_from_po(
         logger.info("Invoice %s uploaded to OneDrive", invoice.invoice_number)
     except Exception as e:
         logger.warning("OneDrive upload failed for invoice %s (non-fatal): %s", invoice.invoice_number, e)
+
+    # ── Auto-log Document record for PO-raised invoice ──────────────────────
+    try:
+        from app.models.documents import Document
+        from app.models.enums import DocumentType, SyncStatus
+        doc = Document(
+            filename=f"invoice_{invoice.invoice_number}.pdf",
+            file_path=f"invoice_{invoice.invoice_number}.pdf",
+            onedrive_url=None,
+            linked_invoice_id=invoice.id,
+            linked_po_id=po.id,
+            uploaded_by=current_user.id,
+            document_type=DocumentType.invoice,
+            sync_status=SyncStatus.pending,
+            customer_name=invoice.customer_name,
+        )
+        db.add(doc)
+        await db.commit()
+        await db.refresh(invoice)
+    except Exception as exc:
+        logger.warning("Document auto-log failed (non-fatal): %s", exc)
+    # ────────────────────────────────────────────────────────────────────────
 
     return APIResponse(data=InvoiceRead.model_validate(invoice), message="Invoice created from PO")
 
