@@ -268,6 +268,14 @@ async def create_invoice_from_po(
     db.add(invoice)
     await db.flush()
 
+    # Link invoice to existing PO milestone if one exists
+    from sqlalchemy import select as sa_select
+    existing_milestone = (await db.execute(
+        sa_select(Milestone).where(Milestone.po_id == po.id, Milestone.invoice_id == None)
+    )).scalar_one_or_none()
+    if existing_milestone:
+        existing_milestone.invoice_id = invoice.id
+
     # Update PO status
     existing_invoices = po.invoices or []
     po.status = POStatus.partially_invoiced if len(existing_invoices) > 0 else POStatus.partially_invoiced
