@@ -216,7 +216,12 @@ class InvoiceBase(BaseModel):
 
 
 class InvoiceCreate(InvoiceBase):
-    pass
+    file_path: str | None = None
+    subtotal: Decimal | None = None
+    tax: Decimal | None = None
+    total: Decimal | None = None
+    notes: str | None = None
+    invoice_date: date | None = None
 
 
 class InvoiceUpdate(BaseModel):
@@ -339,6 +344,7 @@ class LineItemSchema(BaseModel):
 
 
 class InvoiceParseSchema(BaseModel):
+    file_path: str | None = None
     invoice_number: str | None = None
     invoice_date: date | None = None
     po_number: str | None = None

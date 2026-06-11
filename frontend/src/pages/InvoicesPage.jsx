@@ -292,6 +292,7 @@ export default function InvoicesPage() {
         notes: parsed.notes || f.notes,
         organization_id: orgId || f.organization_id,
         customer_name: parsed.customer_name || f.customer_name,
+        file_path: parsed.file_path || f.file_path || null,
       }));
       toast.success(parsed.missing_fields?.length ? 'Partial parse — review highlighted fields' : 'Invoice parsed — review and save');
       if (parsed.missing_fields?.length) toast(`Fill manually: ${parsed.missing_fields.join(', ')}`, { icon: '⚠️' });
@@ -328,6 +329,7 @@ export default function InvoicesPage() {
         amount: total,
         issue_date: form.issue_date,
         notes: form.notes || null,
+        file_path: form.file_path || null,
         customer_name: form.customer_name || null,
       });
       toast.success('Invoice created');
