@@ -108,7 +108,7 @@ async def create_invoice(
     if dup.scalar_one_or_none():
         raise HTTPException(status_code=400, detail="Invoice number already exists for this organization")
 
-    payload = body.model_dump(exclude={"company_id"})
+    payload = body.model_dump(exclude={"company_id", "subtotal", "tax", "total", "notes", "invoice_date", "file_path"})
     inv = Invoice(**payload, company_id=resolved_company, uploaded_by=current_user.id)
     db.add(inv)
     await db.flush()
