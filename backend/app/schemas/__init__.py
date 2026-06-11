@@ -243,11 +243,12 @@ class InvoiceRead(InvoiceBase):
 
 
 class MilestoneBase(BaseModel):
-    invoice_id: int
+    invoice_id: int | None = None
     title: str
     customer_name: str | None = None
     description: str | None = None
     due_date: date | None = None
+    end_date: date | None = None
     amount: Decimal | None = None
     status: MilestoneStatus = MilestoneStatus.pending
 
