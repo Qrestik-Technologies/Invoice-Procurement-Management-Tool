@@ -10,6 +10,7 @@ from app.core.company_scope import get_company_scope
 from app.core.database import get_db
 from app.core.rbac import require_admin, require_any_role, require_entry_or_above
 from app.models.domain import Invoice, Milestone
+from app.models.purchase_orders import PurchaseOrder
 from app.models.enums import AuditAction, MilestoneStatus
 from app.schemas import APIResponse, MilestoneCreate, MilestoneRead, MilestoneUpdate
 from app.services.audit_service import write_audit
