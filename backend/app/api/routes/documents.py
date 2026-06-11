@@ -10,7 +10,7 @@ from sqlalchemy.orm import selectinload
 
 from app.core.config import settings
 from app.core.database import get_db
-from app.core.security import get_current_user, require_roles
+from app.core.security import get_current_user
 from app.models.documents import Document
 from app.models.enums import SyncStatus, UserRole
 from app.models.users import User
@@ -75,7 +75,7 @@ async def download_document(
 @router.post("/upload", response_model=APIResponse[ParseUploadResponse], status_code=status.HTTP_201_CREATED)
 async def upload_document(
     db: Annotated[AsyncSession, Depends(get_db)],
-    current: Annotated[User, Depends(require_roles(UserRole.admin, UserRole.entry))],
+    current: Annotated[User, Depends(require_entry_or_above)],
     file: UploadFile = File(...),
     linked_invoice_id: int | None = None,
     parse: bool = True,

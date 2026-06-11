@@ -25,7 +25,7 @@ class Document(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     linked_invoice = relationship("Invoice", back_populates="documents")
-    linked_po = relationship("PurchaseOrder", back_populates="documents")
+    linked_po = relationship("PurchaseOrder", foreign_keys="[Document.linked_po_id]", back_populates="documents")
     uploader = relationship("User", back_populates="documents")
 
 # patch applied below — do not duplicate
