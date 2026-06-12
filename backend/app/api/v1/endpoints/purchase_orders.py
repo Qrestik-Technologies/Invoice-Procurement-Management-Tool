@@ -88,6 +88,17 @@ async def create_purchase_order(
 ):
     po_data = body.model_dump()
     po_data["currency"] = "USD"
+
+    # Duplicate PO number check
+    existing = await db.execute(
+        select(PurchaseOrder).where(PurchaseOrder.po_number == po_data.get("po_number"))
+    )
+    if existing.scalar_one_or_none():
+        raise HTTPException(
+            status_code=409,
+            detail=f"A Purchase Order with number '{po_data.get('po_number')}' already exists. Duplicate POs are not allowed."
+        )
+
     po = PurchaseOrder(
         company_id=company_id or current_user.company_id,
         uploaded_by=current_user.id,
