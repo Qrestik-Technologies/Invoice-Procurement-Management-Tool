@@ -233,6 +233,7 @@ function PODetailModal({ po, open, onClose, onCreateInvoice }) {
   const vatTotal = lineItems.reduce((s, r) => s + (parseFloat(r.vat_amt) || 0), 0);
 
   const canInvoice = ["active", "partially_invoiced"].includes(d.status);
+  const alreadyInvoiced = d.invoices?.length > 0;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
@@ -259,13 +260,16 @@ function PODetailModal({ po, open, onClose, onCreateInvoice }) {
             )}
             {canInvoice && (
               <button
-                onClick={() => invoiceMut.mutate()}
-                disabled={invoiceMut.isPending}
-                className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg bg-blue-700 text-white hover:bg-blue-800 disabled:opacity-50"
+                onClick={() => !alreadyInvoiced && invoiceMut.mutate()}
+                disabled={invoiceMut.isPending || alreadyInvoiced}
+                title={alreadyInvoiced ? "An invoice has already been generated from this PO" : ""}
+                className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg bg-blue-700 text-white hover:bg-blue-800 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {invoiceMut.isPending
                   ? <><Loader2 className="h-4 w-4 animate-spin" /> Creating…</>
-                  : <><Receipt className="h-4 w-4" /> Raise Invoice from PO</>
+                  : alreadyInvoiced
+                    ? <><Receipt className="h-4 w-4" /> Invoice Already Generated</>
+                    : <><Receipt className="h-4 w-4" /> Raise Invoice from PO</>
                 }
               </button>
             )}
@@ -735,10 +739,7 @@ export default function PurchaseOrdersPage() {
           subtitle="Qrestik Technologies — Manage purchase orders & milestones"
         />
         <div className="flex gap-2">
-          <Button variant="outline">
-            <Download className="w-4 h-4 mr-2" /> Export
-          </Button>
-          <Button onClick={() => setShowNew(true)}>
+<Button onClick={() => setShowNew(true)}>
             <Plus className="w-4 h-4 mr-2" /> New Purchase Order
           </Button>
         </div>
