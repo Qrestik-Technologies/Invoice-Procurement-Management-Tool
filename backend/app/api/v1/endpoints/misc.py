@@ -13,7 +13,8 @@ from app.core.company_scope import get_company_scope
 from app.core.database import get_db
 from app.core.rbac import require_admin, require_any_role, require_entry_or_above
 from app.core.security import get_redis
-from app.models.domain import AuditLog, Invoice, Payment, Reminder as InvoiceReminder
+from app.models.domain import AuditLog, Invoice, Payment
+from app.models.inovice_remainder import InvoiceReminder
 from app.models.enums import AuditAction, InvoiceStatus
 from app.schemas import (
     APIResponse,
@@ -79,7 +80,6 @@ async def list_reminders(
     company_id: Annotated[int | None, Depends(get_company_scope)] = None,
     invoice_id: Optional[int] = Query(None),
 ):
-    from app.models.domain import Reminder
     q = select(Reminder)
     if invoice_id:
         q = q.where(Reminder.invoice_id == invoice_id)
