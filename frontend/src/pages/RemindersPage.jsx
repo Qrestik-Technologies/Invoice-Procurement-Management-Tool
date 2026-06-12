@@ -216,7 +216,7 @@ export default function RemindersPage() {
             <div className="space-y-3">
               {filteredReminders.map(r => (
                 <div key={r.id}>
-                  <ReminderCard reminder={r} invoices={invoices} selected={selectedReminder?.id === r.id} onClick={() => setSelectedReminder(p => p?.id === r.id ? null : r)} />
+                  <ReminderCard reminder={r} invoices={invoices} selected={selectedReminder?.id === r.id} onClick={() => setSelectedReminder(prev => prev?.id === r.id ? null : r)} />
                   {selectedReminder?.id === r.id && (
                     <div className="mt-1 rounded-xl border border-indigo-100 bg-indigo-50 p-4 text-sm space-y-2">
                       <p className="font-semibold text-indigo-800 text-base">Reminder Details</p>
