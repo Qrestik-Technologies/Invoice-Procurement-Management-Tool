@@ -157,7 +157,7 @@ export default function RemindersPage() {
   const handleCreate = async (e) => {
     e.preventDefault();
     try {
-      await apiClient.post(`/reminders/${form.invoice_id}/trigger`, { scheduled_at: new Date(form.scheduled_at).toISOString(), message: form.message || null });
+      await apiClient.post('/reminders', { invoice_id: Number(form.invoice_id), scheduled_at: new Date(form.scheduled_at).toISOString(), message: form.message || null });
       toast.success('Reminder scheduled'); setShowModal(false); setForm({ invoice_id: '', scheduled_at: '', message: '' }); load();
     } catch (err) {
       const detail = err.response?.data?.detail;
