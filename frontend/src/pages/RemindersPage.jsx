@@ -241,15 +241,32 @@ export default function RemindersPage() {
       {showModal && (
         <Modal title="Schedule a Reminder" onClose={() => setShowModal(false)}>
           <form onSubmit={handleCreate} className="space-y-4">
-            <Select label="Invoice" value={form.invoice_id} onChange={set('invoice_id')} required>
-              <option value="">Select invoice</option>
-              {invoices.map(i => <option key={i.id} value={i.id}>{i.invoice_number}</option>)}
-            </Select>
-            <Input label="Send At" type="datetime-local" value={form.scheduled_at} onChange={set('scheduled_at')} required />
-            <Input label="Message (optional)" value={form.message} onChange={set('message')} placeholder="e.g. Payment due reminder" />
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Invoice <span className="text-red-500">*</span></label>
+              <select value={form.invoice_id} onChange={set('invoice_id')} required
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                <option value="">Select an invoice</option>
+                {invoices.map(i => (
+                  <option key={i.id} value={i.id}>
+                    {i.invoice_number}{i.customer_name ? ` — ${i.customer_name}` : ''}{i.amount ? ` (${i.currency || 'USD'} ${Number(i.amount).toLocaleString()})` : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Send At <span className="text-red-500">*</span></label>
+              <input type="datetime-local" value={form.scheduled_at} onChange={set('scheduled_at')} required
+                min={new Date().toISOString().slice(0, 16)}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Message <span className="text-gray-400 font-normal">(optional)</span></label>
+              <textarea value={form.message} onChange={set('message')} rows={3} placeholder="e.g. Payment due — please process at your earliest convenience"
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 resize-none" />
+            </div>
             <div className="flex justify-end gap-3 pt-2">
               <Button variant="secondary" type="button" onClick={() => setShowModal(false)}>Cancel</Button>
-              <Button type="submit">Schedule</Button>
+              <Button type="submit">Schedule Reminder</Button>
             </div>
           </form>
         </Modal>
