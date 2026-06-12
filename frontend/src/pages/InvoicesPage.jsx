@@ -413,14 +413,7 @@ export default function InvoicesPage() {
         title={meta.title}
         organizationName={meta.organizationName}
         description={meta.description}
-        action={(
-          <div className="flex gap-3">
-            <Button variant="secondary" size="sm" onClick={handleExport}>
-              <Download className="h-4 w-4" /> Export
-            </Button>
-            )}
-          </div>
-        )}
+        action={null}
       />
 
       <div className="mb-4 flex gap-3 flex-wrap">
