@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { FileText, Users, TrendingUp, AlertCircle } from 'lucide-react';
+import { FileText, Users, TrendingUp, AlertCircle, Bell, Clock, CheckCircle } from 'lucide-react';
 import apiClient from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { useOrganization } from '../context/OrganizationContext';
@@ -29,11 +29,20 @@ export default function DashboardPage() {
   const orgLabel = organization?.name || 'No organization selected';
   const [summary, setSummary] = useState(null);
   const [invoices, setInvoices] = useState([]);
+  const [reminders, setReminders] = useState([]);
 
   useEffect(() => {
     if (!organizationId) return;
     apiClient.get('/cash-flow/summary').then(r => setSummary(r.data.data)).catch(() => setSummary(null));
     apiClient.get('/invoices').then(r => setInvoices(r.data.data?.slice(0, 5) || [])).catch(() => setInvoices([]));
+    apiClient.get('/reminders').then(r => {
+      const all = r.data.data || [];
+      const upcoming = all
+        .filter(rem => !rem.sent_at)
+        .sort((a, b) => new Date(a.scheduled_at) - new Date(b.scheduled_at))
+        .slice(0, 5);
+      setReminders(upcoming);
+    }).catch(() => setReminders([]));
   }, [organizationId]);
 
   const statusColor = {
@@ -114,6 +123,53 @@ export default function DashboardPage() {
               ))}
             </tbody>
           </table>
+        )}
+      </div>
+
+      {/* Reminders Notification Panel */}
+      <div className="mt-8 rounded-xl border border-amber-200 bg-amber-50 shadow-sm">
+        <div className="flex items-center justify-between border-b border-amber-200 px-6 py-4">
+          <div className="flex items-center gap-2">
+            <Bell className="h-5 w-5 text-amber-500" />
+            <h2 className="font-semibold text-[#111827]">Upcoming Reminders</h2>
+            {reminders.length > 0 && (
+              <span className="ml-1 rounded-full bg-amber-500 px-2 py-0.5 text-xs font-bold text-white">
+                {reminders.length}
+              </span>
+            )}
+          </div>
+          <a href="/reminders" className="text-sm font-medium text-primary hover:underline">View all</a>
+        </div>
+        {reminders.length === 0 ? (
+          <div className="flex items-center gap-3 px-6 py-6 text-sm text-[#9CA3AF]">
+            <CheckCircle className="h-5 w-5 text-emerald-400" />
+            No upcoming reminders
+          </div>
+        ) : (
+          <ul className="divide-y divide-amber-100">
+            {reminders.map(rem => {
+              const date = new Date(rem.scheduled_at);
+              const isOverdue = date < new Date() && !rem.sent_at;
+              const formatted = date.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+              return (
+                <li key={rem.id} className="flex items-start gap-4 px-6 py-4">
+                  <div className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${isOverdue ? 'bg-red-100' : 'bg-amber-100'}`}>
+                    <Clock className={`h-4 w-4 ${isOverdue ? 'text-red-500' : 'text-amber-500'}`} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium text-[#111827]">{rem.message || 'Payment reminder'}</p>
+                    <p className="mt-0.5 text-xs text-[#6B7280]">
+                      Invoice #{rem.invoice_id} &nbsp;·&nbsp;
+                      <span className={isOverdue ? 'font-semibold text-red-500' : 'text-amber-600'}>
+                        {isOverdue ? 'Overdue · ' : ''}{formatted}
+                      </span>
+                    </p>
+                  </div>
+                  <a href="/reminders" className="shrink-0 text-xs font-medium text-primary hover:underline">View</a>
+                </li>
+              );
+            })}
+          </ul>
         )}
       </div>
     </div>
